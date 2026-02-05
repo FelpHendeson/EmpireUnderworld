@@ -1,206 +1,255 @@
 import { nanoid } from 'nanoid';
 
-const villainRoles = [
+export const presenceStates = ['Inexistente', 'Infiltrado', 'Disputado', 'Dominado'];
+
+export const rankOrder = ['Recruta', 'Soldado', 'General', 'Elite'];
+
+export const rankData = {
+  Recruta: {
+    minXp: 0,
+    promoteCost: { cash: 40, respect: 0 },
+    power: 1
+  },
+  Soldado: {
+    minXp: 60,
+    promoteCost: { cash: 120, respect: 2 },
+    power: 2
+  },
+  General: {
+    minXp: 160,
+    promoteCost: { cash: 260, respect: 6 },
+    power: 4
+  },
+  Elite: {
+    minXp: 320,
+    promoteCost: { cash: 520, respect: 12 },
+    power: 6
+  }
+};
+
+export const crimes = [
   {
-    title: 'Contador',
-    buff: {
-      type: 'profit',
-      value: 0.2,
-      description: 'Aumenta o lucro dos negócios em 20%.'
-    }
+    id: 'furto',
+    name: 'Furto',
+    tier: 1,
+    requirements: {},
+    rewards: { cash: 20, respect: 1, xp: 15 },
+    risk: 0.25
   },
   {
-    title: 'Psicopata',
-    buff: {
-      type: 'attack',
-      value: 0.25,
-      description: 'Aumenta a força de ataque em 25%.'
-    }
+    id: 'pequeno-trafico',
+    name: 'Pequeno Trafico',
+    tier: 1,
+    requirements: {},
+    rewards: { cash: 30, respect: 1, xp: 20 },
+    risk: 0.3
   },
   {
-    title: 'Diplomata',
-    buff: {
-      type: 'influence',
-      value: 0.15,
-      description: 'Melhora ganhos de influência política em 15%.'
-    }
+    id: 'assalto-arma',
+    name: 'Assalto a mao armada',
+    tier: 2,
+    requirements: { itemIds: ['arma-fogo'] },
+    rewards: { cash: 80, respect: 2, xp: 35 },
+    risk: 0.45
   },
   {
-    title: 'Sabotador',
-    buff: {
-      type: 'defense',
-      value: 0.2,
-      description: 'Reduz o poder defensivo rival em 20%.'
-    }
+    id: 'carro-forte',
+    name: 'Assalto a carro forte',
+    tier: 3,
+    requirements: { minRankCounts: { Soldado: 5 } },
+    rewards: { cash: 180, respect: 4, xp: 60 },
+    risk: 0.6
   }
 ];
 
-const villainRarities = ['Comum', 'Raro', 'Épico', 'Lendário'];
-const firstNames = ['Luca', 'Valentina', 'Sergio', 'Isabella', 'Rafael', 'Bianca'];
-const lastNames = ['Moretti', 'Santoro', 'Rossi', 'Costa', 'Bianchi', 'Ferraz'];
-
-const businesses = [
+export const blackMarketItems = [
   {
-    id: 'casino',
-    name: 'Cassino Eclipse',
-    income: { cash: 120, respect: 3 },
-    heat: 4
+    id: 'arma-fogo',
+    name: 'Arma de fogo',
+    type: 'arma',
+    price: 120,
+    effects: { respect: 1 }
   },
   {
-    id: 'laundering',
-    name: 'Lavagem de Dinheiro',
-    income: { cash: 80, influence: 2 },
-    heat: 2
+    id: 'roupa-marca',
+    name: 'Roupas de marca',
+    type: 'roupa',
+    price: 80,
+    effects: { respect: 2 }
   },
   {
-    id: 'intel',
-    name: 'Tráfico de Informação',
-    income: { cash: 60, influence: 3, respect: 1 },
-    heat: 3
+    id: 'drogas',
+    name: 'Insumos para revenda',
+    type: 'insumo',
+    price: 60,
+    effects: {}
   }
 ];
 
-const troops = [
+export const recruitPool = [
   {
-    id: 'capangas',
-    name: 'Capangas',
-    type: 'Básico',
-    description: 'Carne para canhão e ocupação de território.',
-    attack: 8,
-    defense: 5,
-    upkeep: 5
+    id: 'm-ramon',
+    name: 'Ramon',
+    rank: 'Recruta',
+    xp: 0,
+    level: 1,
+    entry: { type: 'respect', value: 2 }
   },
   {
-    id: 'segurancas',
-    name: 'Seguranças',
-    type: 'Especialista',
-    description: 'Protegem negócios e resistem a raids.',
-    attack: 6,
-    defense: 10,
-    upkeep: 8
+    id: 'm-sarah',
+    name: 'Sarah',
+    rank: 'Recruta',
+    xp: 0,
+    level: 1,
+    entry: { type: 'cash', value: 60 }
   },
   {
-    id: 'hackers',
-    name: 'Hackers',
-    type: 'Especialista',
-    description: 'Infiltram sistemas e aumentam influência.',
-    attack: 7,
-    defense: 6,
-    upkeep: 9
-  },
-  {
-    id: 'batedores',
-    name: 'Batedores',
-    type: 'Especialista',
-    description: 'Reconhecimento e bônus de ataque em raids.',
-    attack: 9,
-    defense: 4,
-    upkeep: 6
+    id: 'm-tainara',
+    name: 'Tainara',
+    rank: 'Recruta',
+    xp: 0,
+    level: 1,
+    entry: { type: 'respect', value: 4 }
   }
 ];
 
-const territories = [
+export const worldMap = [
   {
-    id: 'north',
-    name: 'Distrito Ártico',
-    defense: 22,
-    businesses: ['casino', 'intel']
-  },
-  {
-    id: 'central',
-    name: 'Cinturão Central',
-    defense: 18,
-    businesses: ['laundering']
-  },
-  {
-    id: 'docks',
-    name: 'Docas Prismáticas',
-    defense: 26,
-    businesses: ['intel', 'laundering']
-  },
-  {
-    id: 'uptown',
-    name: 'Zona Alta',
-    defense: 30,
-    businesses: ['casino']
+    id: 'br',
+    name: 'Brasil',
+    states: [
+      {
+        id: 'sp',
+        name: 'Sao Paulo',
+        cities: [
+          {
+            id: 'sp-capital',
+            name: 'Sao Paulo',
+            neighborhoods: [
+              {
+                id: 'mooca',
+                name: 'Mooca',
+                dominantOrg: { name: 'Irmandade Mooca', powerLevel: 6, eliteCount: 2 }
+              },
+              {
+                id: 'santana',
+                name: 'Santana',
+                dominantOrg: { name: 'Vanguarda Norte', powerLevel: 7, eliteCount: 3 }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'rj',
+        name: 'Rio de Janeiro',
+        cities: [
+          {
+            id: 'rio-centro',
+            name: 'Rio de Janeiro',
+            neighborhoods: [
+              {
+                id: 'centro-rj',
+                name: 'Centro',
+                dominantOrg: { name: 'Liga do Centro', powerLevel: 5, eliteCount: 1 }
+              },
+              {
+                id: 'tijuca',
+                name: 'Tijuca',
+                dominantOrg: { name: 'Eixo Tijuca', powerLevel: 8, eliteCount: 3 }
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 ];
 
-const createVillain = () => {
-  const role = villainRoles[Math.floor(Math.random() * villainRoles.length)];
-  return {
-    id: nanoid(),
-    name: `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`,
-    rarity: villainRarities[Math.floor(Math.random() * villainRarities.length)],
-    role: role.title,
-    buff: role.buff
-  };
+const attachPresence = (mapData) =>
+  mapData.map((country) => ({
+    ...country,
+    states: country.states.map((state) => ({
+      ...state,
+      cities: state.cities.map((city) => ({
+        ...city,
+        neighborhoods: city.neighborhoods.map((neighborhood) => ({
+          ...neighborhood,
+          presence: 'Inexistente'
+        }))
+      }))
+    }))
+  }));
+
+export const getNextRank = (rank) => {
+  const index = rankOrder.indexOf(rank);
+  if (index < 0 || index >= rankOrder.length - 1) {
+    return null;
+  }
+  return rankOrder[index + 1];
+};
+
+export const getRankPower = (rank) => rankData[rank]?.power ?? 1;
+
+export const calculateTerritoryIncome = (mapData) => {
+  let cash = 0;
+  let influence = 0;
+  let respect = 0;
+  mapData.forEach((country) => {
+    country.states.forEach((state) => {
+      state.cities.forEach((city) => {
+        city.neighborhoods.forEach((neighborhood) => {
+          if (neighborhood.presence === 'Dominado') {
+            cash += 15 + neighborhood.dominantOrg.powerLevel * 2;
+            influence += 1;
+            respect += 1;
+          }
+        });
+      });
+    });
+  });
+
+  return { cash, influence, respect };
 };
 
 export const createInitialState = () => {
-  const villains = Array.from({ length: 4 }, () => createVillain());
+  const mapWithPresence = attachPresence(worldMap);
+  const firstNeighborhood = mapWithPresence[0].states[0].cities[0].neighborhoods[0];
+
   return {
+    day: 1,
     resources: {
-      cash: 2500,
-      influence: 35,
-      respect: 20
+      cash: 0,
+      influence: 0,
+      respect: 0
     },
-    territories,
-    businesses,
-    troops,
-    villains,
-    activityLog: [
-      'O império nasceu na madrugada chuvosa da Cidade Neon.',
-      'Capangas patrulham o Distrito Ártico em busca de rivais.'
-    ],
-    activeRaid: {
-      troopId: 'capangas',
-      villainId: villains[0]?.id ?? '',
-      targetTerritoryId: 'central'
-    }
-  };
-};
-
-const sumIncome = (businessIds) =>
-  businessIds.reduce(
-    (total, businessId) => {
-      const business = businesses.find((item) => item.id === businessId);
-      if (!business) {
-        return total;
+    player: {
+      name: 'Jogador'
+    },
+    worldMap: mapWithPresence,
+    selectedLocation: {
+      countryId: 'br',
+      stateId: mapWithPresence[0].states[0].id,
+      cityId: mapWithPresence[0].states[0].cities[0].id,
+      neighborhoodId: firstNeighborhood.id
+    },
+    inventory: {},
+    members: [
+      {
+        id: nanoid(),
+        name: 'Jogador',
+        rank: 'Recruta',
+        xp: 0,
+        level: 1
       }
-      return {
-        cash: total.cash + (business.income.cash ?? 0),
-        influence: total.influence + (business.income.influence ?? 0),
-        respect: total.respect + (business.income.respect ?? 0)
-      };
-    },
-    { cash: 0, influence: 0, respect: 0 }
-  );
-
-export const calculatePassiveIncome = (territoryList) =>
-  territoryList.reduce(
-    (total, territory) => {
-      const income = sumIncome(territory.businesses);
-      return {
-        cash: total.cash + income.cash,
-        influence: total.influence + income.influence,
-        respect: total.respect + income.respect
-      };
-    },
-    { cash: 0, influence: 0, respect: 0 }
-  );
-
-export const calculateRaidOutcome = ({ troop, villain, territory }) => {
-  const baseAttack = troop.attack;
-  const attackBuff = villain?.buff?.type === 'attack' ? villain.buff.value : 0;
-  const defenseDebuff = villain?.buff?.type === 'defense' ? villain.buff.value : 0;
-  const effectiveAttack = baseAttack * (1 + attackBuff);
-  const effectiveDefense = territory.defense * (1 - defenseDebuff);
-  const winChance = Math.min(0.9, Math.max(0.1, effectiveAttack / (effectiveDefense + 1)));
-  const roll = Math.random();
-  return {
-    winChance,
-    victory: roll <= winChance,
-    roll
+    ],
+    recruitPool,
+    crimes,
+    blackMarket: blackMarketItems,
+    activityLog: ['Voce chegou ao Brasil para comecar do zero.'],
+    combatReport: null,
+    activeEvent: null,
+    lastTurnSummary: null,
+    uiInfoPanel: null
   };
 };

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.glass-panel {
+  @apply bg-noir-800/80 border border-white/5 shadow-neon backdrop-blur;
+}
+
+.neon-border {
+  box-shadow: 0 0 20px rgba(123, 47, 247, 0.25), 0 0 12px rgba(76, 201, 240, 0.2);
+}

@@ -33,14 +33,30 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
     const params = request.params as { slot: string };
     const body = request.body as {
       name?: string;
-      state?: Record<string, unknown>;
+      state?: Record<string, unknown> | string;
     };
+    let normalizedState: Record<string, unknown> | null = null;
 
-    if (!body.state || typeof body.state !== 'object') {
+    if (body.state && typeof body.state === 'object') {
+      normalizedState = body.state as Record<string, unknown>;
+    }
+
+    if (body.state && typeof body.state === 'string') {
+      try {
+        const parsed = JSON.parse(body.state);
+        if (parsed && typeof parsed === 'object') {
+          normalizedState = parsed as Record<string, unknown>;
+        }
+      } catch {
+        normalizedState = null;
+      }
+    }
+
+    if (!normalizedState) {
       return reply.code(400).send({ message: 'state object is required' });
     }
 
-    const safeState = body.state;
+    const safeState = normalizedState;
     const day = Number((safeState as any).day ?? 1);
     const resources = ((safeState as any).resources ?? {
       cash: 0,

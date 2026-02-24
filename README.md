@@ -46,6 +46,11 @@ Build:
 npm run build
 ```
 
+Testes da API:
+```bash
+npm run test -w backend
+```
+
 ## Endpoints principais
 Base URL local: `http://localhost:3333/api`
 
@@ -60,11 +65,14 @@ Base URL local: `http://localhost:3333/api`
 - `GET /game/leaderboard`
 
 ## Fluxo de jogo integrado com API
+- Fluxo de telas: `Login/Registro` -> `Gerenciamento de Saves (3 slots)` -> `Dashboard do jogo`.
+- Login/registro e obrigatorio para entrar no jogo.
+- Ao criar campanha, o jogador define o nome do personagem.
 - Front continua com estado central no `useReducer`.
-- Login/registro gera token JWT.
-- Token fica persistido em `localStorage`.
+- Token JWT fica persistido em `localStorage`.
 - Save em nuvem envia snapshot do estado atual para `/saves/:slot`.
 - Load em nuvem hidrata o reducer com snapshot vindo da API.
+- Backend aceita payload de `state` como objeto ou JSON stringificado (compatibilidade).
 
 ## Observacao sobre Auth.zip
 O template de API foi usado como base (Fastify + TS). Na copia recebida do `Auth.zip`, nao havia URL MongoDB explicita em arquivos visiveis/historico Git extraido, apenas placeholder comentado. O `.env.example` deste projeto ja esta preparado para voce inserir a URL correta do cluster.

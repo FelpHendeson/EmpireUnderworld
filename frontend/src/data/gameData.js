@@ -224,9 +224,10 @@ export const calculateTerritoryIncome = (mapData) => {
 };
 
 // Fabrica o estado inicial global consumido pelo useReducer.
-export const createInitialState = () => {
+export const createInitialState = (playerName = 'Jogador') => {
   const mapWithPresence = attachPresence(worldMap);
   const firstNeighborhood = mapWithPresence[0].states[0].cities[0].neighborhoods[0];
+  const normalizedPlayerName = playerName.trim() || 'Jogador';
 
   return {
     day: 1,
@@ -236,7 +237,7 @@ export const createInitialState = () => {
       respect: 0
     },
     player: {
-      name: 'Jogador'
+      name: normalizedPlayerName
     },
     worldMap: mapWithPresence,
     selectedLocation: {
@@ -249,7 +250,7 @@ export const createInitialState = () => {
     members: [
       {
         id: nanoid(),
-        name: 'Jogador',
+        name: normalizedPlayerName,
         rank: 'Recruta',
         xp: 0,
         level: 1

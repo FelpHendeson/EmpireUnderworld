@@ -21,7 +21,9 @@ import {
 } from './data/gameData';
 import { authApi, saveApi } from './services/api';
 
-// Conteudo textual exibido no painel de ajuda contextual da UI.
+const SLOT_IDS = ['slot-1', 'slot-2', 'slot-3'];
+const TOKEN_STORAGE_KEY = 'underworld_auth_token';
+
 const infoContent = {
   resources: {
     title: 'Recursos',
@@ -37,19 +39,15 @@ const infoContent = {
   }
 };
 
-// Aplica deltas em recursos, mantendo campos nao informados com valor zero.
 const applyResourceDelta = (resources, delta) => ({
   cash: resources.cash + (delta.cash ?? 0),
   influence: resources.influence + (delta.influence ?? 0),
   respect: resources.respect + (delta.respect ?? 0)
 });
 
-// Curva de nivel simples baseada em XP acumulada.
 const getLevelFromXp = (xp) => 1 + Math.floor(xp / 50);
-
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-// Atualiza um unico bairro dentro da estrutura profunda do mapa sem mutar estado anterior.
 const updateNeighborhood = (worldMap, ids, updater) =>
   worldMap.map((country) => ({
     ...country,
@@ -72,13 +70,11 @@ const updateNeighborhood = (worldMap, ids, updater) =>
     }))
   }));
 
-// Conta membros cuja patente eh igual ou superior a patente-alvo.
 const countRankOrAbove = (members, rank) => {
   const targetPower = getRankPower(rank);
   return members.filter((member) => getRankPower(member.rank) >= targetPower).length;
 };
 
-// Valida requisitos de item e patente para habilitar um crime.
 const canCommitCrime = (state, crime) => {
   const requiredItems = crime.requirements?.itemIds ?? [];
   const requiredRanks = crime.requirements?.minRankCounts ?? {};
@@ -89,9 +85,6 @@ const canCommitCrime = (state, crime) => {
   return hasItems && hasRanks;
 };
 
-const TOKEN_STORAGE_KEY = 'underworld_auth_token';
-
-// Remove campos de UI/transientes antes de enviar o snapshot do jogo para a API.
 const extractSavableState = (state) => ({
   ...state,
   combatReport: null,
@@ -99,10 +92,8 @@ const extractSavableState = (state) => ({
   uiInfoPanel: null
 });
 
-// Motor central do jogo: toda transicao de estado passa por aqui.
 const reducer = (state, action) => {
   switch (action.type) {
-    // Fecha um turno: soma renda passiva e avanca o dia.
     case 'ADVANCE_DAY': {
       const income = calculateTerritoryIncome(state.worldMap);
       const nextResources = applyResourceDelta(state.resources, income);
@@ -113,16 +104,12 @@ const reducer = (state, action) => {
         lastTurnSummary: income
       };
     }
-
-    // Muda local atualmente selecionado no mapa.
     case 'SET_LOCATION': {
       return {
         ...state,
         selectedLocation: action.payload
       };
     }
-
-    // Executa crime com chance de sucesso, ganho de XP e impacto em recursos.
     case 'ACTION_COMMIT_CRIME': {
       const crime = state.crimes.find((item) => item.id === action.payload.crimeId);
       if (!crime || !canCommitCrime(state, crime)) {
@@ -154,8 +141,6 @@ const reducer = (state, action) => {
         ].slice(0, 12)
       };
     }
-
-    // Compra item no mercado negro e aplica efeito instantaneo.
     case 'ACTION_BUY_ITEM': {
       const item = state.blackMarket.find((entry) => entry.id === action.payload.itemId);
       if (!item || state.resources.cash < item.price) {
@@ -175,8 +160,6 @@ const reducer = (state, action) => {
         activityLog: [`Compra no mercado negro: ${item.name}.`, ...state.activityLog].slice(0, 12)
       };
     }
-
-    // Recruta um candidato se o custo de entrada puder ser pago.
     case 'ACTION_RECRUIT': {
       const recruit = state.recruitPool.find((member) => member.id === action.payload.memberId);
       if (!recruit) {
@@ -201,8 +184,6 @@ const reducer = (state, action) => {
         activityLog: [`${recruit.name} entrou na organizacao.`, ...state.activityLog].slice(0, 12)
       };
     }
-
-    // Promove membro quando XP e recursos minimos sao atendidos.
     case 'ACTION_PROMOTE': {
       const member = state.members.find((item) => item.id === action.payload.memberId);
       if (!member) {
@@ -234,37 +215,24 @@ const reducer = (state, action) => {
         activityLog: [`${member.name} foi promovido para ${nextRank}.`, ...state.activityLog].slice(0, 12)
       };
     }
-
-    // Resolve disputa de territorio contra organizacao dominante do bairro selecionado.
     case 'ACTION_TAKEOVER': {
       const ids = state.selectedLocation;
       let selectedNeighborhood = null;
       state.worldMap.forEach((country) => {
-        if (country.id !== ids.countryId) {
-          return;
-        }
+        if (country.id !== ids.countryId) return;
         country.states.forEach((stateItem) => {
-          if (stateItem.id !== ids.stateId) {
-            return;
-          }
+          if (stateItem.id !== ids.stateId) return;
           stateItem.cities.forEach((city) => {
-            if (city.id !== ids.cityId) {
-              return;
-            }
+            if (city.id !== ids.cityId) return;
             selectedNeighborhood = city.neighborhoods.find(
               (neighborhood) => neighborhood.id === ids.neighborhoodId
             );
           });
         });
       });
-      if (!selectedNeighborhood) {
-        return state;
-      }
+      if (!selectedNeighborhood) return state;
 
-      const ourPower = state.members.reduce(
-        (total, member) => total + getRankPower(member.rank),
-        0
-      );
+      const ourPower = state.members.reduce((total, member) => total + getRankPower(member.rank), 0);
       const enemyPower = selectedNeighborhood.dominantOrg.powerLevel;
       const winChance = clamp(ourPower / (enemyPower + 1), 0.1, 0.9);
       const victory = Math.random() <= winChance;
@@ -278,7 +246,6 @@ const reducer = (state, action) => {
               ? 'Dominado'
               : selectedNeighborhood.presence;
 
-      // Pequena chance de absorver soldados de elite apos dominacao completa.
       let absorbedMembers = [];
       if (victory && nextPresence === 'Dominado' && Math.random() < 0.2) {
         const eliteCount = Math.max(1, Math.min(2, selectedNeighborhood.dominantOrg.eliteCount));
@@ -319,15 +286,12 @@ const reducer = (state, action) => {
         ].slice(0, 12)
       };
     }
-
-    // Abre/fecha o painel contextual de explicacao.
     case 'TOGGLE_INFO': {
       return {
         ...state,
         uiInfoPanel: state.uiInfoPanel === action.payload.panel ? null : action.payload.panel
       };
     }
-    // Reidrata o jogo com snapshot carregado da API.
     case 'HYDRATE_STATE': {
       return {
         ...action.payload,
@@ -336,7 +300,6 @@ const reducer = (state, action) => {
         uiInfoPanel: null
       };
     }
-
     default:
       return state;
   }
@@ -362,17 +325,178 @@ const ResourceCard = ({ label, value, icon: Icon }) => (
   </div>
 );
 
+const AuthScreen = ({ authForm, setAuthForm, handleRegister, handleLogin, apiStatus }) => (
+  <div className="relative min-h-screen overflow-hidden bg-black text-white">
+    <div className="absolute inset-0 bg-gradient-to-br from-black via-noir-950 to-black" />
+    <div className="absolute -left-24 top-20 h-72 w-72 rounded-full bg-neon-blue/20 blur-3xl" />
+    <div className="absolute -right-24 bottom-10 h-80 w-80 rounded-full bg-neon-pink/20 blur-3xl" />
+
+    <div className="relative mx-auto flex min-h-screen max-w-md items-center px-6 py-10">
+      <div className="w-full rounded-3xl border border-white/10 bg-noir-900/70 p-6 backdrop-blur">
+        <p className="text-xs uppercase tracking-[0.45em] text-white/50">Empire Underworld</p>
+        <h1 className="mt-4 text-3xl font-semibold">Acesso a organizacao</h1>
+        <p className="mt-2 text-sm text-white/60">Login/registro obrigatorio para entrar no jogo.</p>
+
+        <div className="mt-6 space-y-3">
+          <input
+            value={authForm.email}
+            onChange={(event) => setAuthForm((prev) => ({ ...prev, email: event.target.value }))}
+            placeholder="Email"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+          />
+          <input
+            value={authForm.username}
+            onChange={(event) => setAuthForm((prev) => ({ ...prev, username: event.target.value }))}
+            placeholder="Username (somente registro)"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+          />
+          <input
+            type="password"
+            value={authForm.password}
+            onChange={(event) => setAuthForm((prev) => ({ ...prev, password: event.target.value }))}
+            placeholder="Senha"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+          />
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleRegister}
+            disabled={apiStatus.loading}
+            className="rounded-xl border border-neon-blue/40 bg-neon-blue/10 px-3 py-2 text-sm font-semibold text-neon-blue transition hover:bg-neon-blue/20 disabled:opacity-50"
+          >
+            Registrar
+          </button>
+          <button
+            type="button"
+            onClick={handleLogin}
+            disabled={apiStatus.loading}
+            className="rounded-xl border border-neon-pink/40 bg-neon-pink/10 px-3 py-2 text-sm font-semibold text-neon-pink transition hover:bg-neon-pink/20 disabled:opacity-50"
+          >
+            Login
+          </button>
+        </div>
+
+        {apiStatus.error && <p className="mt-3 text-xs text-red-300">{apiStatus.error}</p>}
+      </div>
+    </div>
+  </div>
+);
+
+const SaveScreen = ({
+  authUser,
+  savesBySlot,
+  playerName,
+  setPlayerName,
+  saveName,
+  setSaveName,
+  apiStatus,
+  onCreateSave,
+  onLoadSave,
+  onDeleteSave,
+  onLogout
+}) => (
+  <div className="min-h-screen bg-noir-950 text-white">
+    <div className="mx-auto max-w-6xl px-6 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.45em] text-white/50">Empire Underworld</p>
+          <h1 className="mt-3 text-3xl font-semibold">Gerenciamento de Saves</h1>
+          <p className="mt-2 text-sm text-white/60">Escolha 1 entre 3 slots para iniciar ou continuar sua campanha.</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-white/70">{authUser?.username}</span>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs transition hover:border-white/30"
+          >
+            Sair
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-6 md:grid-cols-3">
+        {SLOT_IDS.map((slot) => {
+          const save = savesBySlot[slot];
+          return (
+            <article key={slot} className="rounded-3xl border border-white/10 bg-noir-900/70 p-5">
+              <p className="text-xs uppercase tracking-[0.25em] text-white/50">{slot}</p>
+              {save ? (
+                <>
+                  <h3 className="mt-3 text-lg font-semibold">{save.name}</h3>
+                  <p className="mt-2 text-xs text-white/60">Dia {save.day}</p>
+                  <p className="mt-1 text-xs text-white/60">
+                    Cash ${save.resources?.cash ?? 0} | Infl. {save.resources?.influence ?? 0} | Resp. {save.resources?.respect ?? 0}
+                  </p>
+                  <div className="mt-5 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onLoadSave(slot)}
+                      disabled={apiStatus.loading}
+                      className="rounded-lg border border-neon-blue/40 bg-neon-blue/10 px-3 py-2 text-xs font-semibold text-neon-blue disabled:opacity-50"
+                    >
+                      Entrar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteSave(slot)}
+                      disabled={apiStatus.loading}
+                      className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-50"
+                    >
+                      Apagar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="mt-3 text-lg font-semibold">Slot vazio</h3>
+                  <div className="mt-4 space-y-2">
+                    <input
+                      value={playerName}
+                      onChange={(event) => setPlayerName(event.target.value)}
+                      placeholder="Nome do personagem"
+                      className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+                    />
+                    <input
+                      value={saveName}
+                      onChange={(event) => setSaveName(event.target.value)}
+                      placeholder="Nome da campanha"
+                      className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onCreateSave(slot)}
+                    disabled={apiStatus.loading}
+                    className="mt-4 w-full rounded-lg border border-neon-pink/40 bg-neon-pink/10 px-3 py-2 text-xs font-semibold text-neon-pink disabled:opacity-50"
+                  >
+                    Criar e Entrar
+                  </button>
+                </>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      {apiStatus.error && <p className="mt-5 text-sm text-red-300">{apiStatus.error}</p>}
+    </div>
+  </div>
+);
+
 const App = () => {
-  const [state, dispatch] = useReducer(reducer, null, createInitialState);
+  const [state, dispatch] = useReducer(reducer, null, () => createInitialState('Jogador'));
+  const [screen, setScreen] = useState('auth');
   const [authToken, setAuthToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) ?? '');
   const [authUser, setAuthUser] = useState(null);
   const [authForm, setAuthForm] = useState({ email: '', username: '', password: '' });
-  const [slotName, setSlotName] = useState('slot-1');
+  const [playerName, setPlayerName] = useState('');
   const [saveName, setSaveName] = useState('Campanha principal');
   const [cloudSaves, setCloudSaves] = useState([]);
   const [apiStatus, setApiStatus] = useState({ loading: false, error: '' });
 
-  // Resolve os objetos completos da localizacao selecionada para renderizacao.
   const selectedContext = useMemo(() => {
     const country = state.worldMap.find((item) => item.id === state.selectedLocation.countryId);
     const stateItem = country?.states.find((item) => item.id === state.selectedLocation.stateId);
@@ -386,7 +510,6 @@ const App = () => {
   const activeState = selectedContext.stateItem;
   const activeCity = selectedContext.city;
 
-  // Facilita lookup de nome para renderizar inventario por ID.
   const itemNameMap = useMemo(() => {
     const map = {};
     state.blackMarket.forEach((item) => {
@@ -394,6 +517,14 @@ const App = () => {
     });
     return map;
   }, [state.blackMarket]);
+
+  const savesBySlot = useMemo(() => {
+    const map = {};
+    cloudSaves.forEach((save) => {
+      map[save.slot] = save;
+    });
+    return map;
+  }, [cloudSaves]);
 
   useEffect(() => {
     if (authToken) {
@@ -413,6 +544,7 @@ const App = () => {
       if (!authToken) {
         setAuthUser(null);
         setCloudSaves([]);
+        setScreen('auth');
         return;
       }
 
@@ -421,12 +553,14 @@ const App = () => {
         const me = await authApi.me(authToken);
         setAuthUser(me.user);
         await refreshSaves(authToken);
+        setScreen('saves');
         setApiStatus({ loading: false, error: '' });
       } catch (error) {
         setApiStatus({ loading: false, error: error.message });
         setAuthToken('');
         setAuthUser(null);
         setCloudSaves([]);
+        setScreen('auth');
       }
     };
 
@@ -441,6 +575,7 @@ const App = () => {
       setAuthUser(response.user);
       setApiStatus({ loading: false, error: '' });
       setAuthForm((prev) => ({ ...prev, password: '' }));
+      setScreen('saves');
     } catch (error) {
       setApiStatus({ loading: false, error: error.message });
     }
@@ -457,6 +592,7 @@ const App = () => {
       setAuthUser(response.user);
       setApiStatus({ loading: false, error: '' });
       setAuthForm((prev) => ({ ...prev, password: '' }));
+      setScreen('saves');
     } catch (error) {
       setApiStatus({ loading: false, error: error.message });
     }
@@ -466,21 +602,29 @@ const App = () => {
     setAuthToken('');
     setAuthUser(null);
     setCloudSaves([]);
+    dispatch({ type: 'HYDRATE_STATE', payload: createInitialState('Jogador') });
+    setScreen('auth');
     setApiStatus({ loading: false, error: '' });
   };
 
-  const handleSaveToCloud = async () => {
-    if (!authToken) {
-      setApiStatus({ loading: false, error: 'Faca login para salvar no servidor.' });
+  const handleCreateSave = async (slot) => {
+    if (!authToken) return;
+    const normalizedPlayerName = playerName.trim();
+    if (!normalizedPlayerName) {
+      setApiStatus({ loading: false, error: 'Informe o nome do personagem para comecar.' });
       return;
     }
+
     try {
       setApiStatus({ loading: true, error: '' });
-      await saveApi.save(authToken, slotName, {
-        name: saveName,
-        state: extractSavableState(state)
+      const freshState = createInitialState(normalizedPlayerName);
+      await saveApi.save(authToken, slot, {
+        name: saveName.trim() || `Campanha ${slot}`,
+        state: extractSavableState(freshState)
       });
       await refreshSaves(authToken);
+      dispatch({ type: 'HYDRATE_STATE', payload: freshState });
+      setScreen('game');
       setApiStatus({ loading: false, error: '' });
     } catch (error) {
       setApiStatus({ loading: false, error: error.message });
@@ -488,13 +632,12 @@ const App = () => {
   };
 
   const handleLoadFromCloud = async (slot) => {
-    if (!authToken) {
-      return;
-    }
+    if (!authToken) return;
     try {
       setApiStatus({ loading: true, error: '' });
       const data = await saveApi.load(authToken, slot);
       dispatch({ type: 'HYDRATE_STATE', payload: data.save.state });
+      setScreen('game');
       setApiStatus({ loading: false, error: '' });
     } catch (error) {
       setApiStatus({ loading: false, error: error.message });
@@ -502,9 +645,7 @@ const App = () => {
   };
 
   const handleDeleteSave = async (slot) => {
-    if (!authToken) {
-      return;
-    }
+    if (!authToken) return;
     try {
       setApiStatus({ loading: true, error: '' });
       await saveApi.remove(authToken, slot);
@@ -515,21 +656,61 @@ const App = () => {
     }
   };
 
+  if (screen === 'auth') {
+    return (
+      <AuthScreen
+        authForm={authForm}
+        setAuthForm={setAuthForm}
+        handleRegister={handleRegister}
+        handleLogin={handleLogin}
+        apiStatus={apiStatus}
+      />
+    );
+  }
+
+  if (screen === 'saves') {
+    return (
+      <SaveScreen
+        authUser={authUser}
+        savesBySlot={savesBySlot}
+        playerName={playerName}
+        setPlayerName={setPlayerName}
+        saveName={saveName}
+        setSaveName={setSaveName}
+        apiStatus={apiStatus}
+        onCreateSave={handleCreateSave}
+        onLoadSave={handleLoadFromCloud}
+        onDeleteSave={handleDeleteSave}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-noir-950 text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <header className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.5em] text-white/40">
-                Empire Underworld
-              </p>
+              <p className="text-xs uppercase tracking-[0.5em] text-white/40">Empire Underworld</p>
               <h1 className="text-3xl font-semibold">RPG geopolitico criminal</h1>
-              <p className="mt-2 text-sm text-white/60">
-                Progresso por reputacao, itens e controle territorial.
-              </p>
+              <p className="mt-2 text-sm text-white/60">Progresso por reputacao, itens e controle territorial.</p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setScreen('saves')}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:border-white/30"
+              >
+                Saves
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:border-white/30"
+              >
+                Sair
+              </button>
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-noir-900/70 px-4 py-2">
                 <CalendarDays className="h-4 w-4 text-neon-blue" />
                 <span className="text-sm">Dia {state.day}</span>
@@ -546,151 +727,18 @@ const App = () => {
 
           <div className="flex items-center gap-3">
             <p className="text-xs uppercase tracking-[0.3em] text-white/40">Recursos</p>
-            <InfoButton
-              onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'resources' } })}
-            />
+            <InfoButton onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'resources' } })} />
           </div>
           <div className="grid gap-4 md:grid-cols-3">
-            <ResourceCard
-              label="Cash"
-              value={`$${state.resources.cash}`}
-              icon={BadgeDollarSign}
-            />
-            <ResourceCard
-              label="Influencia"
-              value={`+${state.resources.influence}`}
-              icon={ShieldAlert}
-            />
-            <ResourceCard
-              label="Respeito"
-              value={`+${state.resources.respect}`}
-              icon={Swords}
-            />
+            <ResourceCard label="Cash" value={`$${state.resources.cash}`} icon={BadgeDollarSign} />
+            <ResourceCard label="Influencia" value={`+${state.resources.influence}`} icon={ShieldAlert} />
+            <ResourceCard label="Respeito" value={`+${state.resources.respect}`} icon={Swords} />
           </div>
         </header>
 
-        <section className="mt-6 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold">Conta e salvamento em nuvem</p>
-            {authUser ? (
-              <div className="flex items-center gap-2 text-xs text-white/70">
-                <span>{authUser.username}</span>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 transition hover:border-white/30"
-                >
-                  Sair
-                </button>
-              </div>
-            ) : (
-              <span className="text-xs text-white/50">Nao autenticado</span>
-            )}
-          </div>
-
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
-            <input
-              value={authForm.email}
-              onChange={(event) => setAuthForm((prev) => ({ ...prev, email: event.target.value }))}
-              placeholder="email"
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-            />
-            <input
-              value={authForm.username}
-              onChange={(event) => setAuthForm((prev) => ({ ...prev, username: event.target.value }))}
-              placeholder="username (registro)"
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-            />
-            <input
-              type="password"
-              value={authForm.password}
-              onChange={(event) => setAuthForm((prev) => ({ ...prev, password: event.target.value }))}
-              placeholder="senha"
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-            />
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleRegister}
-              disabled={apiStatus.loading}
-              className="rounded-lg border border-neon-blue/40 bg-neon-blue/10 px-3 py-2 text-xs font-semibold text-neon-blue transition hover:bg-neon-blue/20 disabled:opacity-50"
-            >
-              Registrar
-            </button>
-            <button
-              type="button"
-              onClick={handleLogin}
-              disabled={apiStatus.loading}
-              className="rounded-lg border border-neon-pink/40 bg-neon-pink/10 px-3 py-2 text-xs font-semibold text-neon-pink transition hover:bg-neon-pink/20 disabled:opacity-50"
-            >
-              Login
-            </button>
-          </div>
-
-          <div className="mt-4 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
-            <input
-              value={slotName}
-              onChange={(event) => setSlotName(event.target.value)}
-              placeholder="slot-1"
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-            />
-            <input
-              value={saveName}
-              onChange={(event) => setSaveName(event.target.value)}
-              placeholder="Nome do save"
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-            />
-            <button
-              type="button"
-              onClick={handleSaveToCloud}
-              disabled={apiStatus.loading || !authToken}
-              className="rounded-lg border border-neon-amber/40 bg-neon-amber/10 px-3 py-2 text-xs font-semibold text-neon-amber transition hover:bg-neon-amber/20 disabled:opacity-50"
-            >
-              Salvar
-            </button>
-          </div>
-
-          {apiStatus.error && <p className="mt-3 text-xs text-red-300">{apiStatus.error}</p>}
-
-          <div className="mt-4 space-y-2">
-            {cloudSaves.length === 0 && (
-              <p className="text-xs text-white/50">Nenhum save remoto encontrado.</p>
-            )}
-            {cloudSaves.map((save) => (
-              <div
-                key={save.slot}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs"
-              >
-                <span>
-                  {save.name} ({save.slot}) - Dia {save.day}
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleLoadFromCloud(save.slot)}
-                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 transition hover:border-neon-blue/40"
-                  >
-                    Carregar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteSave(save.slot)}
-                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 transition hover:border-red-300/60"
-                  >
-                    Apagar
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
         {state.lastTurnSummary && (
           <section className="mt-6 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-3 text-sm text-white/70">
-            Historico de Turno: +${state.lastTurnSummary.cash} cash, +
-            {state.lastTurnSummary.influence} influencia, +{state.lastTurnSummary.respect} respeito.
+            Historico de Turno: +${state.lastTurnSummary.cash} cash, +{state.lastTurnSummary.influence} influencia, +{state.lastTurnSummary.respect} respeito.
           </section>
         )}
 
@@ -761,9 +809,7 @@ const App = () => {
                       <p className="text-sm font-semibold">{neighborhood.name}</p>
                       <Map className="h-4 w-4 text-neon-blue" />
                     </div>
-                    <p className="mt-2 text-xs text-white/60">
-                      Dominante: {neighborhood.dominantOrg.name}
-                    </p>
+                    <p className="mt-2 text-xs text-white/60">Dominante: {neighborhood.dominantOrg.name}</p>
                     <p className="mt-1 text-xs text-neon-pink">Presenca: {neighborhood.presence}</p>
                   </button>
                 ))}
@@ -781,9 +827,7 @@ const App = () => {
                   >
                     Disputar territorio
                   </button>
-                  <span className="text-xs text-white/50">
-                    Power inimigo: {selectedContext.neighborhood.dominantOrg.powerLevel}
-                  </span>
+                  <span className="text-xs text-white/50">Power inimigo: {selectedContext.neighborhood.dominantOrg.powerLevel}</span>
                 </div>
               </div>
             )}
@@ -792,9 +836,7 @@ const App = () => {
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold">Acoes estrategicas</h2>
-              <InfoButton
-                onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'actions' } })}
-              />
+              <InfoButton onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'actions' } })} />
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
@@ -857,9 +899,7 @@ const App = () => {
                 Recrutamento
               </div>
               <div className="mt-3 grid gap-2 text-xs">
-                {state.recruitPool.length === 0 && (
-                  <p className="text-white/60">Nenhum candidato disponivel.</p>
-                )}
+                {state.recruitPool.length === 0 && <p className="text-white/60">Nenhum candidato disponivel.</p>}
                 {state.recruitPool.map((member) => (
                   <button
                     key={member.id}
@@ -897,16 +937,11 @@ const App = () => {
                   state.resources.cash >= requirements.promoteCost.cash &&
                   state.resources.respect >= requirements.promoteCost.respect;
                 return (
-                  <div
-                    key={member.id}
-                    className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-3 text-sm"
-                  >
+                  <div key={member.id} className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-3 text-sm">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold">{member.name}</p>
-                        <p className="text-xs text-white/60">
-                          {member.rank} - XP {member.xp}
-                        </p>
+                        <p className="text-xs text-white/60">{member.rank} - XP {member.xp}</p>
                       </div>
                       <button
                         type="button"
@@ -930,9 +965,7 @@ const App = () => {
 
           <div className="space-y-3 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4 text-sm text-white/70">
             <p className="font-semibold text-white">Inventario</p>
-            {Object.keys(state.inventory).length === 0 && (
-              <p className="text-white/50">Sem itens no momento.</p>
-            )}
+            {Object.keys(state.inventory).length === 0 && <p className="text-white/50">Sem itens no momento.</p>}
             {Object.entries(state.inventory).map(([itemId, quantity]) => (
               <div key={itemId} className="flex items-center justify-between">
                 <span>{itemNameMap[itemId] ?? itemId}</span>
@@ -946,10 +979,7 @@ const App = () => {
           <h2 className="text-lg font-semibold">Linha do tempo</h2>
           <div className="mt-4 space-y-3">
             {state.activityLog.map((entry, index) => (
-              <div
-                key={`${entry}-${index}`}
-                className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4 text-sm"
-              >
+              <div key={`${entry}-${index}`} className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4 text-sm">
                 {entry}
               </div>
             ))}

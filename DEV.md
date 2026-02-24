@@ -36,12 +36,15 @@ Token JWT:
 - enviado no header `Authorization: Bearer <token>`
 
 ### 2.3 Cloud Save
-No topo da tela principal:
-- formulario de registro/login
-- status de usuario autenticado
-- save por slot
-- listagem de slots remotos
-- carregar/apagar save
+Fluxo atual de UX:
+- Tela de login/registro obrigatoria
+- Tela de gerenciamento de saves com 3 slots fixos
+- Dashboard principal do jogo apos criar/carregar campanha
+
+Regras:
+- Criacao de campanha exige nome do personagem
+- Cada slot mostra preview de dia/recursos
+- Acoes por slot: criar/entrar/apagar
 
 Persistencia enviada ao backend:
 - snapshot completo do estado do jogo (sem campos transitivos de UI)
@@ -112,6 +115,7 @@ Infra:
 - endpoints de save protegidos por JWT
 - fallback de erro 401 em autenticacao
 - CORS configuravel por env
+- compatibilidade de payload em saves: `state` como objeto ou JSON stringificado
 
 ## 4. Variaveis de ambiente
 
@@ -130,6 +134,7 @@ Scripts no `package.json` da raiz:
 - `npm run dev:frontend`
 - `npm run dev:backend`
 - `npm run build`
+- `npm run test -w backend`
 
 ## 6. Decisoes de design
 

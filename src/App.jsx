@@ -20,6 +20,7 @@ import {
   rankData
 } from './data/gameData';
 
+// Conteudo textual exibido no painel de ajuda contextual da UI.
 const infoContent = {
   resources: {
     title: 'Recursos',
@@ -35,16 +36,19 @@ const infoContent = {
   }
 };
 
+// Aplica deltas em recursos, mantendo campos nao informados com valor zero.
 const applyResourceDelta = (resources, delta) => ({
   cash: resources.cash + (delta.cash ?? 0),
   influence: resources.influence + (delta.influence ?? 0),
   respect: resources.respect + (delta.respect ?? 0)
 });
 
+// Curva de nivel simples baseada em XP acumulada.
 const getLevelFromXp = (xp) => 1 + Math.floor(xp / 50);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+// Atualiza um unico bairro dentro da estrutura profunda do mapa sem mutar estado anterior.
 const updateNeighborhood = (worldMap, ids, updater) =>
   worldMap.map((country) => ({
     ...country,
@@ -67,11 +71,13 @@ const updateNeighborhood = (worldMap, ids, updater) =>
     }))
   }));
 
+// Conta membros cuja patente eh igual ou superior a patente-alvo.
 const countRankOrAbove = (members, rank) => {
   const targetPower = getRankPower(rank);
   return members.filter((member) => getRankPower(member.rank) >= targetPower).length;
 };
 
+// Valida requisitos de item e patente para habilitar um crime.
 const canCommitCrime = (state, crime) => {
   const requiredItems = crime.requirements?.itemIds ?? [];
   const requiredRanks = crime.requirements?.minRankCounts ?? {};
@@ -82,8 +88,10 @@ const canCommitCrime = (state, crime) => {
   return hasItems && hasRanks;
 };
 
+// Motor central do jogo: toda transicao de estado passa por aqui.
 const reducer = (state, action) => {
   switch (action.type) {
+    // Fecha um turno: soma renda passiva e avanca o dia.
     case 'ADVANCE_DAY': {
       const income = calculateTerritoryIncome(state.worldMap);
       const nextResources = applyResourceDelta(state.resources, income);
@@ -94,12 +102,16 @@ const reducer = (state, action) => {
         lastTurnSummary: income
       };
     }
+
+    // Muda local atualmente selecionado no mapa.
     case 'SET_LOCATION': {
       return {
         ...state,
         selectedLocation: action.payload
       };
     }
+
+    // Executa crime com chance de sucesso, ganho de XP e impacto em recursos.
     case 'ACTION_COMMIT_CRIME': {
       const crime = state.crimes.find((item) => item.id === action.payload.crimeId);
       if (!crime || !canCommitCrime(state, crime)) {
@@ -131,6 +143,8 @@ const reducer = (state, action) => {
         ].slice(0, 12)
       };
     }
+
+    // Compra item no mercado negro e aplica efeito instantaneo.
     case 'ACTION_BUY_ITEM': {
       const item = state.blackMarket.find((entry) => entry.id === action.payload.itemId);
       if (!item || state.resources.cash < item.price) {
@@ -147,12 +161,11 @@ const reducer = (state, action) => {
           cash: -item.price,
           ...item.effects
         }),
-        activityLog: [
-          `Compra no mercado negro: ${item.name}.`,
-          ...state.activityLog
-        ].slice(0, 12)
+        activityLog: [`Compra no mercado negro: ${item.name}.`, ...state.activityLog].slice(0, 12)
       };
     }
+
+    // Recruta um candidato se o custo de entrada puder ser pago.
     case 'ACTION_RECRUIT': {
       const recruit = state.recruitPool.find((member) => member.id === action.payload.memberId);
       if (!recruit) {
@@ -172,17 +185,13 @@ const reducer = (state, action) => {
       return {
         ...state,
         resources: nextResources,
-        members: [
-          ...state.members,
-          { ...recruit, entry: undefined }
-        ],
+        members: [...state.members, { ...recruit, entry: undefined }],
         recruitPool: state.recruitPool.filter((member) => member.id !== recruit.id),
-        activityLog: [
-          `${recruit.name} entrou na organizacao.`,
-          ...state.activityLog
-        ].slice(0, 12)
+        activityLog: [`${recruit.name} entrou na organizacao.`, ...state.activityLog].slice(0, 12)
       };
     }
+
+    // Promove membro quando XP e recursos minimos sao atendidos.
     case 'ACTION_PROMOTE': {
       const member = state.members.find((item) => item.id === action.payload.memberId);
       if (!member) {
@@ -196,7 +205,10 @@ const reducer = (state, action) => {
       if (!requirements || member.xp < requirements.minXp) {
         return state;
       }
-      if (state.resources.cash < requirements.promoteCost.cash || state.resources.respect < requirements.promoteCost.respect) {
+      if (
+        state.resources.cash < requirements.promoteCost.cash ||
+        state.resources.respect < requirements.promoteCost.respect
+      ) {
         return state;
       }
       return {
@@ -206,16 +218,13 @@ const reducer = (state, action) => {
           respect: -requirements.promoteCost.respect
         }),
         members: state.members.map((item) =>
-          item.id === member.id
-            ? { ...item, rank: nextRank }
-            : item
+          item.id === member.id ? { ...item, rank: nextRank } : item
         ),
-        activityLog: [
-          `${member.name} foi promovido para ${nextRank}.`,
-          ...state.activityLog
-        ].slice(0, 12)
+        activityLog: [`${member.name} foi promovido para ${nextRank}.`, ...state.activityLog].slice(0, 12)
       };
     }
+
+    // Resolve disputa de territorio contra organizacao dominante do bairro selecionado.
     case 'ACTION_TAKEOVER': {
       const ids = state.selectedLocation;
       let selectedNeighborhood = null;
@@ -253,11 +262,12 @@ const reducer = (state, action) => {
         selectedNeighborhood.presence === 'Inexistente'
           ? 'Infiltrado'
           : selectedNeighborhood.presence === 'Infiltrado'
-          ? 'Disputado'
-          : selectedNeighborhood.presence === 'Disputado' && victory
-          ? 'Dominado'
-          : selectedNeighborhood.presence;
+            ? 'Disputado'
+            : selectedNeighborhood.presence === 'Disputado' && victory
+              ? 'Dominado'
+              : selectedNeighborhood.presence;
 
+      // Pequena chance de absorver soldados de elite apos dominacao completa.
       let absorbedMembers = [];
       if (victory && nextPresence === 'Dominado' && Math.random() < 0.2) {
         const eliteCount = Math.max(1, Math.min(2, selectedNeighborhood.dominantOrg.eliteCount));
@@ -272,7 +282,11 @@ const reducer = (state, action) => {
 
       const updatedWorldMap = updateNeighborhood(state.worldMap, ids, (neighborhood) => ({
         ...neighborhood,
-        presence: victory ? nextPresence : neighborhood.presence === 'Inexistente' ? 'Infiltrado' : neighborhood.presence
+        presence: victory
+          ? nextPresence
+          : neighborhood.presence === 'Inexistente'
+            ? 'Infiltrado'
+            : neighborhood.presence
       }));
 
       const report = `Seus ${countRankOrAbove(state.members, 'Soldado')} Soldados e ${
@@ -294,12 +308,15 @@ const reducer = (state, action) => {
         ].slice(0, 12)
       };
     }
+
+    // Abre/fecha o painel contextual de explicacao.
     case 'TOGGLE_INFO': {
       return {
         ...state,
         uiInfoPanel: state.uiInfoPanel === action.payload.panel ? null : action.payload.panel
       };
     }
+
     default:
       return state;
   }
@@ -328,6 +345,7 @@ const ResourceCard = ({ label, value, icon: Icon }) => (
 const App = () => {
   const [state, dispatch] = useReducer(reducer, null, createInitialState);
 
+  // Resolve os objetos completos da localizacao selecionada para renderizacao.
   const selectedContext = useMemo(() => {
     const country = state.worldMap.find((item) => item.id === state.selectedLocation.countryId);
     const stateItem = country?.states.find((item) => item.id === state.selectedLocation.stateId);
@@ -341,6 +359,7 @@ const App = () => {
   const activeState = selectedContext.stateItem;
   const activeCity = selectedContext.city;
 
+  // Facilita lookup de nome para renderizar inventario por ID.
   const itemNameMap = useMemo(() => {
     const map = {};
     state.blackMarket.forEach((item) => {
@@ -379,10 +398,10 @@ const App = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <p className="text-xs uppercase tracking-[0.3em] text-white/40">
-              Recursos
-            </p>
-            <InfoButton onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'resources' } })} />
+            <p className="text-xs uppercase tracking-[0.3em] text-white/40">Recursos</p>
+            <InfoButton
+              onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'resources' } })}
+            />
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <ResourceCard
@@ -445,9 +464,7 @@ const App = () => {
                   }`}
                 >
                   <p className="text-sm font-semibold">{stateItem.name}</p>
-                  <p className="text-xs text-white/60">
-                    {stateItem.cities.length} cidades
-                  </p>
+                  <p className="text-xs text-white/60">{stateItem.cities.length} cidades</p>
                 </button>
               ))}
             </div>
@@ -482,9 +499,7 @@ const App = () => {
                     <p className="mt-2 text-xs text-white/60">
                       Dominante: {neighborhood.dominantOrg.name}
                     </p>
-                    <p className="mt-1 text-xs text-neon-pink">
-                      Presenca: {neighborhood.presence}
-                    </p>
+                    <p className="mt-1 text-xs text-neon-pink">Presenca: {neighborhood.presence}</p>
                   </button>
                 ))}
               </div>
@@ -512,7 +527,9 @@ const App = () => {
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold">Acoes estrategicas</h2>
-              <InfoButton onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'actions' } })} />
+              <InfoButton
+                onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'actions' } })}
+              />
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">

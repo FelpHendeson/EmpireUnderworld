@@ -1,9 +1,12 @@
 import { nanoid } from 'nanoid';
 
+// Estados de progresso territorial no mapa.
 export const presenceStates = ['Inexistente', 'Infiltrado', 'Disputado', 'Dominado'];
 
+// Ordem oficial de progressao de patente.
 export const rankOrder = ['Recruta', 'Soldado', 'General', 'Elite'];
 
+// Regras por patente: XP minimo, custo de promocao e poder base em combate.
 export const rankData = {
   Recruta: {
     minXp: 0,
@@ -27,6 +30,7 @@ export const rankData = {
   }
 };
 
+// Catalogo de crimes executaveis pelo jogador.
 export const crimes = [
   {
     id: 'furto',
@@ -62,6 +66,7 @@ export const crimes = [
   }
 ];
 
+// Itens disponiveis no mercado negro e efeitos imediatos.
 export const blackMarketItems = [
   {
     id: 'arma-fogo',
@@ -86,6 +91,7 @@ export const blackMarketItems = [
   }
 ];
 
+// Candidatos iniciais para recrutamento.
 export const recruitPool = [
   {
     id: 'm-ramon',
@@ -113,6 +119,7 @@ export const recruitPool = [
   }
 ];
 
+// Mapa base da campanha, com hierarquia pais > estado > cidade > bairro.
 export const worldMap = [
   {
     id: 'br',
@@ -166,6 +173,7 @@ export const worldMap = [
   }
 ];
 
+// Injeta o estado inicial de presenca em todos os bairros do mapa.
 const attachPresence = (mapData) =>
   mapData.map((country) => ({
     ...country,
@@ -181,6 +189,7 @@ const attachPresence = (mapData) =>
     }))
   }));
 
+// Retorna a proxima patente na cadeia de progressao.
 export const getNextRank = (rank) => {
   const index = rankOrder.indexOf(rank);
   if (index < 0 || index >= rankOrder.length - 1) {
@@ -189,8 +198,10 @@ export const getNextRank = (rank) => {
   return rankOrder[index + 1];
 };
 
+// Traduz patente para poder numerico de combate.
 export const getRankPower = (rank) => rankData[rank]?.power ?? 1;
 
+// Soma renda passiva gerada por bairros ja dominados.
 export const calculateTerritoryIncome = (mapData) => {
   let cash = 0;
   let influence = 0;
@@ -212,6 +223,7 @@ export const calculateTerritoryIncome = (mapData) => {
   return { cash, influence, respect };
 };
 
+// Fabrica o estado inicial global consumido pelo useReducer.
 export const createInitialState = () => {
   const mapWithPresence = attachPresence(worldMap);
   const firstNeighborhood = mapWithPresence[0].states[0].cities[0].neighborhoods[0];

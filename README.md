@@ -1,44 +1,70 @@
 # Empire Underworld
 
-Base de um jogo de simulacao e gerenciamento de organizacao criminosa (estilo Mafia/Tycoon), construido com React + Vite + Tailwind.
+Monorepo de jogo web (frontend + backend) para simulacao e gestao de organizacao criminosa.
 
-## Stack
-- React 18
-- Vite 5
-- Tailwind CSS 3
-- Lucide React (icones)
-- NanoID (ids unicos)
+## Estrutura
+- `frontend/`: cliente React + Vite + Tailwind, com loop de jogo e UI.
+- `backend/`: API Fastify + MongoDB para auth, usuarios e cloud saves.
+- `DEV.md`: documentacao tecnica detalhada da arquitetura e fluxo.
 
-## Como rodar
+## Requisitos
+- Node.js 20+
+- MongoDB Atlas (ou instancia MongoDB acessivel)
+
+## Setup
+1. Instale dependencias na raiz:
 ```bash
 npm install
+```
+2. Configure backend:
+```bash
+cp backend/.env.example backend/.env
+```
+3. Ajuste `backend/.env`:
+- `MONGODB_URI`: mesma URL do seu cluster, trocando apenas o nome do database para `empire_underworld`.
+- `JWT_SECRET`: chave de assinatura de tokens.
+- `CORS_ORIGIN`: URL do frontend.
+4. (Opcional) configure frontend:
+```bash
+cp frontend/.env.example frontend/.env
+```
+
+## Rodando
+Subir frontend + backend juntos:
+```bash
 npm run dev
 ```
 
-Build de producao:
+Comandos separados:
 ```bash
-npm run build
-npm run preview
+npm run dev:frontend
+npm run dev:backend
 ```
 
-## Estrutura principal
-- `src/App.jsx`: UI principal + `useReducer` com toda a logica de jogo.
-- `src/data/gameData.js`: dados base, regras de patente e fabrica do estado inicial.
-- `src/index.css`: estilos globais e tokens visuais para tema noir/neon.
-- `DEV.md`: documentacao tecnica detalhada do funcionamento.
+Build:
+```bash
+npm run build
+```
 
-## Mecanicas implementadas
-- Recursos globais: `cash`, `influence`, `respect`.
-- Mapa territorial (pais > estado > cidade > bairro) com estados de presenca:
-  - `Inexistente` -> `Infiltrado` -> `Disputado` -> `Dominado`
-- Renda passiva por turno para bairros dominados (`ADVANCE_DAY`).
-- Crimes com requisitos e risco de falha (`ACTION_COMMIT_CRIME`).
-- Mercado negro com compra de itens e efeitos imediatos (`ACTION_BUY_ITEM`).
-- Recrutamento com custo em dinheiro ou respeito (`ACTION_RECRUIT`).
-- Promocao de membros por XP + custo de recursos (`ACTION_PROMOTE`).
-- Conflito territorial com chance de vitoria baseada em poder do time (`ACTION_TAKEOVER`).
-- Linha do tempo de atividades para feedback narrativo.
+## Endpoints principais
+Base URL local: `http://localhost:3333/api`
 
-## Observacoes
-- A logica esta centralizada no reducer para facilitar persistencia futura (LocalStorage/API).
-- Eventos aleatorios e sistema completo de tenentes/viloes ainda podem ser expandidos sobre a base atual.
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me`
+- `GET /saves`
+- `GET /saves/:slot`
+- `PUT /saves/:slot`
+- `DELETE /saves/:slot`
+- `GET /game/config`
+- `GET /game/leaderboard`
+
+## Fluxo de jogo integrado com API
+- Front continua com estado central no `useReducer`.
+- Login/registro gera token JWT.
+- Token fica persistido em `localStorage`.
+- Save em nuvem envia snapshot do estado atual para `/saves/:slot`.
+- Load em nuvem hidrata o reducer com snapshot vindo da API.
+
+## Observacao sobre Auth.zip
+O template de API foi usado como base (Fastify + TS). Na copia recebida do `Auth.zip`, nao havia URL MongoDB explicita em arquivos visiveis/historico Git extraido, apenas placeholder comentado. O `.env.example` deste projeto ja esta preparado para voce inserir a URL correta do cluster.

@@ -1,0 +1,27 @@
+{
+  "name": "underworld-backend",
+  "version": "0.1.0",
+  "description": "Backend API for Empire Underworld",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/jwt": "^9.1.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.7.4",
+    "fastify-plugin": "^5.0.1",
+    "mongoose": "^8.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

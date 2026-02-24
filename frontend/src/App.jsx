@@ -1,4 +1,4 @@
-import { useMemo, useReducer } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { nanoid } from 'nanoid';
 import {
   BadgeDollarSign,
@@ -19,6 +19,7 @@ import {
   getRankPower,
   rankData
 } from './data/gameData';
+import { authApi, saveApi } from './services/api';
 
 // Conteudo textual exibido no painel de ajuda contextual da UI.
 const infoContent = {
@@ -87,6 +88,16 @@ const canCommitCrime = (state, crime) => {
   );
   return hasItems && hasRanks;
 };
+
+const TOKEN_STORAGE_KEY = 'underworld_auth_token';
+
+// Remove campos de UI/transientes antes de enviar o snapshot do jogo para a API.
+const extractSavableState = (state) => ({
+  ...state,
+  combatReport: null,
+  lastTurnSummary: null,
+  uiInfoPanel: null
+});
 
 // Motor central do jogo: toda transicao de estado passa por aqui.
 const reducer = (state, action) => {
@@ -316,6 +327,15 @@ const reducer = (state, action) => {
         uiInfoPanel: state.uiInfoPanel === action.payload.panel ? null : action.payload.panel
       };
     }
+    // Reidrata o jogo com snapshot carregado da API.
+    case 'HYDRATE_STATE': {
+      return {
+        ...action.payload,
+        combatReport: null,
+        lastTurnSummary: null,
+        uiInfoPanel: null
+      };
+    }
 
     default:
       return state;
@@ -344,6 +364,13 @@ const ResourceCard = ({ label, value, icon: Icon }) => (
 
 const App = () => {
   const [state, dispatch] = useReducer(reducer, null, createInitialState);
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) ?? '');
+  const [authUser, setAuthUser] = useState(null);
+  const [authForm, setAuthForm] = useState({ email: '', username: '', password: '' });
+  const [slotName, setSlotName] = useState('slot-1');
+  const [saveName, setSaveName] = useState('Campanha principal');
+  const [cloudSaves, setCloudSaves] = useState([]);
+  const [apiStatus, setApiStatus] = useState({ loading: false, error: '' });
 
   // Resolve os objetos completos da localizacao selecionada para renderizacao.
   const selectedContext = useMemo(() => {
@@ -367,6 +394,126 @@ const App = () => {
     });
     return map;
   }, [state.blackMarket]);
+
+  useEffect(() => {
+    if (authToken) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, authToken);
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  }, [authToken]);
+
+  const refreshSaves = async (token) => {
+    const data = await saveApi.list(token);
+    setCloudSaves(data.saves ?? []);
+  };
+
+  useEffect(() => {
+    const bootstrapSession = async () => {
+      if (!authToken) {
+        setAuthUser(null);
+        setCloudSaves([]);
+        return;
+      }
+
+      try {
+        setApiStatus({ loading: true, error: '' });
+        const me = await authApi.me(authToken);
+        setAuthUser(me.user);
+        await refreshSaves(authToken);
+        setApiStatus({ loading: false, error: '' });
+      } catch (error) {
+        setApiStatus({ loading: false, error: error.message });
+        setAuthToken('');
+        setAuthUser(null);
+        setCloudSaves([]);
+      }
+    };
+
+    bootstrapSession();
+  }, [authToken]);
+
+  const handleRegister = async () => {
+    try {
+      setApiStatus({ loading: true, error: '' });
+      const response = await authApi.register(authForm);
+      setAuthToken(response.token);
+      setAuthUser(response.user);
+      setApiStatus({ loading: false, error: '' });
+      setAuthForm((prev) => ({ ...prev, password: '' }));
+    } catch (error) {
+      setApiStatus({ loading: false, error: error.message });
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      setApiStatus({ loading: true, error: '' });
+      const response = await authApi.login({
+        email: authForm.email,
+        password: authForm.password
+      });
+      setAuthToken(response.token);
+      setAuthUser(response.user);
+      setApiStatus({ loading: false, error: '' });
+      setAuthForm((prev) => ({ ...prev, password: '' }));
+    } catch (error) {
+      setApiStatus({ loading: false, error: error.message });
+    }
+  };
+
+  const handleLogout = () => {
+    setAuthToken('');
+    setAuthUser(null);
+    setCloudSaves([]);
+    setApiStatus({ loading: false, error: '' });
+  };
+
+  const handleSaveToCloud = async () => {
+    if (!authToken) {
+      setApiStatus({ loading: false, error: 'Faca login para salvar no servidor.' });
+      return;
+    }
+    try {
+      setApiStatus({ loading: true, error: '' });
+      await saveApi.save(authToken, slotName, {
+        name: saveName,
+        state: extractSavableState(state)
+      });
+      await refreshSaves(authToken);
+      setApiStatus({ loading: false, error: '' });
+    } catch (error) {
+      setApiStatus({ loading: false, error: error.message });
+    }
+  };
+
+  const handleLoadFromCloud = async (slot) => {
+    if (!authToken) {
+      return;
+    }
+    try {
+      setApiStatus({ loading: true, error: '' });
+      const data = await saveApi.load(authToken, slot);
+      dispatch({ type: 'HYDRATE_STATE', payload: data.save.state });
+      setApiStatus({ loading: false, error: '' });
+    } catch (error) {
+      setApiStatus({ loading: false, error: error.message });
+    }
+  };
+
+  const handleDeleteSave = async (slot) => {
+    if (!authToken) {
+      return;
+    }
+    try {
+      setApiStatus({ loading: true, error: '' });
+      await saveApi.remove(authToken, slot);
+      await refreshSaves(authToken);
+      setApiStatus({ loading: false, error: '' });
+    } catch (error) {
+      setApiStatus({ loading: false, error: error.message });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-noir-950 text-white">
@@ -421,6 +568,124 @@ const App = () => {
             />
           </div>
         </header>
+
+        <section className="mt-6 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold">Conta e salvamento em nuvem</p>
+            {authUser ? (
+              <div className="flex items-center gap-2 text-xs text-white/70">
+                <span>{authUser.username}</span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 transition hover:border-white/30"
+                >
+                  Sair
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs text-white/50">Nao autenticado</span>
+            )}
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <input
+              value={authForm.email}
+              onChange={(event) => setAuthForm((prev) => ({ ...prev, email: event.target.value }))}
+              placeholder="email"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+            />
+            <input
+              value={authForm.username}
+              onChange={(event) => setAuthForm((prev) => ({ ...prev, username: event.target.value }))}
+              placeholder="username (registro)"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+            />
+            <input
+              type="password"
+              value={authForm.password}
+              onChange={(event) => setAuthForm((prev) => ({ ...prev, password: event.target.value }))}
+              placeholder="senha"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+            />
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRegister}
+              disabled={apiStatus.loading}
+              className="rounded-lg border border-neon-blue/40 bg-neon-blue/10 px-3 py-2 text-xs font-semibold text-neon-blue transition hover:bg-neon-blue/20 disabled:opacity-50"
+            >
+              Registrar
+            </button>
+            <button
+              type="button"
+              onClick={handleLogin}
+              disabled={apiStatus.loading}
+              className="rounded-lg border border-neon-pink/40 bg-neon-pink/10 px-3 py-2 text-xs font-semibold text-neon-pink transition hover:bg-neon-pink/20 disabled:opacity-50"
+            >
+              Login
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+            <input
+              value={slotName}
+              onChange={(event) => setSlotName(event.target.value)}
+              placeholder="slot-1"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+            />
+            <input
+              value={saveName}
+              onChange={(event) => setSaveName(event.target.value)}
+              placeholder="Nome do save"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+            />
+            <button
+              type="button"
+              onClick={handleSaveToCloud}
+              disabled={apiStatus.loading || !authToken}
+              className="rounded-lg border border-neon-amber/40 bg-neon-amber/10 px-3 py-2 text-xs font-semibold text-neon-amber transition hover:bg-neon-amber/20 disabled:opacity-50"
+            >
+              Salvar
+            </button>
+          </div>
+
+          {apiStatus.error && <p className="mt-3 text-xs text-red-300">{apiStatus.error}</p>}
+
+          <div className="mt-4 space-y-2">
+            {cloudSaves.length === 0 && (
+              <p className="text-xs text-white/50">Nenhum save remoto encontrado.</p>
+            )}
+            {cloudSaves.map((save) => (
+              <div
+                key={save.slot}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs"
+              >
+                <span>
+                  {save.name} ({save.slot}) - Dia {save.day}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleLoadFromCloud(save.slot)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 transition hover:border-neon-blue/40"
+                  >
+                    Carregar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSave(save.slot)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 transition hover:border-red-300/60"
+                  >
+                    Apagar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {state.lastTurnSummary && (
           <section className="mt-6 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-3 text-sm text-white/70">

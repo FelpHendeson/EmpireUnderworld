@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import {
   BadgeDollarSign,
@@ -23,6 +23,13 @@ import { authApi, saveApi } from './services/api';
 
 const SLOT_IDS = ['slot-1', 'slot-2', 'slot-3'];
 const TOKEN_STORAGE_KEY = 'underworld_auth_token';
+const AUTO_SAVE_INTERVAL_MS = 30000;
+
+const createInitialSlotDrafts = () =>
+  SLOT_IDS.reduce((acc, slot) => {
+    acc[slot] = { playerName: '', saveName: 'Campanha principal' };
+    return acc;
+  }, {});
 
 const infoContent = {
   resources: {
@@ -387,10 +394,8 @@ const AuthScreen = ({ authForm, setAuthForm, handleRegister, handleLogin, apiSta
 const SaveScreen = ({
   authUser,
   savesBySlot,
-  playerName,
-  setPlayerName,
-  saveName,
-  setSaveName,
+  slotDrafts,
+  onSlotDraftChange,
   apiStatus,
   onCreateSave,
   onLoadSave,
@@ -420,6 +425,7 @@ const SaveScreen = ({
       <div className="mt-8 grid gap-6 md:grid-cols-3">
         {SLOT_IDS.map((slot) => {
           const save = savesBySlot[slot];
+          const draft = slotDrafts[slot] ?? { playerName: '', saveName: 'Campanha principal' };
           return (
             <article key={slot} className="rounded-3xl border border-white/10 bg-noir-900/70 p-5">
               <p className="text-xs uppercase tracking-[0.25em] text-white/50">{slot}</p>
@@ -454,14 +460,14 @@ const SaveScreen = ({
                   <h3 className="mt-3 text-lg font-semibold">Slot vazio</h3>
                   <div className="mt-4 space-y-2">
                     <input
-                      value={playerName}
-                      onChange={(event) => setPlayerName(event.target.value)}
+                      value={draft.playerName}
+                      onChange={(event) => onSlotDraftChange(slot, 'playerName', event.target.value)}
                       placeholder="Nome do personagem"
                       className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
                     />
                     <input
-                      value={saveName}
-                      onChange={(event) => setSaveName(event.target.value)}
+                      value={draft.saveName}
+                      onChange={(event) => onSlotDraftChange(slot, 'saveName', event.target.value)}
                       placeholder="Nome da campanha"
                       className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
                     />
@@ -492,10 +498,16 @@ const App = () => {
   const [authToken, setAuthToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) ?? '');
   const [authUser, setAuthUser] = useState(null);
   const [authForm, setAuthForm] = useState({ email: '', username: '', password: '' });
-  const [playerName, setPlayerName] = useState('');
-  const [saveName, setSaveName] = useState('Campanha principal');
+  const [slotDrafts, setSlotDrafts] = useState(createInitialSlotDrafts);
+  const [activeSlot, setActiveSlot] = useState(null);
+  const [activeSaveName, setActiveSaveName] = useState('Campanha principal');
   const [cloudSaves, setCloudSaves] = useState([]);
   const [apiStatus, setApiStatus] = useState({ loading: false, error: '' });
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const selectedContext = useMemo(() => {
     const country = state.worldMap.find((item) => item.id === state.selectedLocation.countryId);
@@ -539,11 +551,49 @@ const App = () => {
     setCloudSaves(data.saves ?? []);
   };
 
+  const updateSlotDraft = (slot, field, value) => {
+    setSlotDrafts((prev) => ({
+      ...prev,
+      [slot]: {
+        ...prev[slot],
+        [field]: value
+      }
+    }));
+  };
+
+  const saveCurrentProgress = async ({ silent = false } = {}) => {
+    if (!authToken || !activeSlot || screen !== 'game') {
+      return false;
+    }
+
+    try {
+      if (!silent) {
+        setApiStatus({ loading: true, error: '' });
+      }
+      await saveApi.save(authToken, activeSlot, {
+        name: activeSaveName || `Campanha ${activeSlot}`,
+        state: extractSavableState(stateRef.current)
+      });
+      await refreshSaves(authToken);
+      if (!silent) {
+        setApiStatus({ loading: false, error: '' });
+      }
+      return true;
+    } catch (error) {
+      if (!silent) {
+        setApiStatus({ loading: false, error: error.message });
+      }
+      return false;
+    }
+  };
+
   useEffect(() => {
     const bootstrapSession = async () => {
       if (!authToken) {
         setAuthUser(null);
         setCloudSaves([]);
+        setActiveSlot(null);
+        setActiveSaveName('Campanha principal');
         setScreen('auth');
         return;
       }
@@ -560,6 +610,8 @@ const App = () => {
         setAuthToken('');
         setAuthUser(null);
         setCloudSaves([]);
+        setActiveSlot(null);
+        setActiveSaveName('Campanha principal');
         setScreen('auth');
       }
     };
@@ -598,10 +650,14 @@ const App = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await saveCurrentProgress({ silent: true });
     setAuthToken('');
     setAuthUser(null);
     setCloudSaves([]);
+    setActiveSlot(null);
+    setActiveSaveName('Campanha principal');
+    setSlotDrafts(createInitialSlotDrafts());
     dispatch({ type: 'HYDRATE_STATE', payload: createInitialState('Jogador') });
     setScreen('auth');
     setApiStatus({ loading: false, error: '' });
@@ -609,7 +665,8 @@ const App = () => {
 
   const handleCreateSave = async (slot) => {
     if (!authToken) return;
-    const normalizedPlayerName = playerName.trim();
+    const draft = slotDrafts[slot] ?? { playerName: '', saveName: 'Campanha principal' };
+    const normalizedPlayerName = draft.playerName.trim();
     if (!normalizedPlayerName) {
       setApiStatus({ loading: false, error: 'Informe o nome do personagem para comecar.' });
       return;
@@ -618,12 +675,15 @@ const App = () => {
     try {
       setApiStatus({ loading: true, error: '' });
       const freshState = createInitialState(normalizedPlayerName);
+      const campaignName = draft.saveName.trim() || `Campanha ${slot}`;
       await saveApi.save(authToken, slot, {
-        name: saveName.trim() || `Campanha ${slot}`,
+        name: campaignName,
         state: extractSavableState(freshState)
       });
       await refreshSaves(authToken);
       dispatch({ type: 'HYDRATE_STATE', payload: freshState });
+      setActiveSlot(slot);
+      setActiveSaveName(campaignName);
       setScreen('game');
       setApiStatus({ loading: false, error: '' });
     } catch (error) {
@@ -637,6 +697,8 @@ const App = () => {
       setApiStatus({ loading: true, error: '' });
       const data = await saveApi.load(authToken, slot);
       dispatch({ type: 'HYDRATE_STATE', payload: data.save.state });
+      setActiveSlot(slot);
+      setActiveSaveName(data.save.name || `Campanha ${slot}`);
       setScreen('game');
       setApiStatus({ loading: false, error: '' });
     } catch (error) {
@@ -650,11 +712,27 @@ const App = () => {
       setApiStatus({ loading: true, error: '' });
       await saveApi.remove(authToken, slot);
       await refreshSaves(authToken);
+      if (activeSlot === slot) {
+        setActiveSlot(null);
+        setActiveSaveName('Campanha principal');
+      }
       setApiStatus({ loading: false, error: '' });
     } catch (error) {
       setApiStatus({ loading: false, error: error.message });
     }
   };
+
+  useEffect(() => {
+    if (screen !== 'game' || !authToken || !activeSlot) {
+      return undefined;
+    }
+
+    const timer = setInterval(() => {
+      saveCurrentProgress({ silent: true });
+    }, AUTO_SAVE_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [screen, authToken, activeSlot, activeSaveName]);
 
   if (screen === 'auth') {
     return (
@@ -673,10 +751,8 @@ const App = () => {
       <SaveScreen
         authUser={authUser}
         savesBySlot={savesBySlot}
-        playerName={playerName}
-        setPlayerName={setPlayerName}
-        saveName={saveName}
-        setSaveName={setSaveName}
+        slotDrafts={slotDrafts}
+        onSlotDraftChange={updateSlotDraft}
         apiStatus={apiStatus}
         onCreateSave={handleCreateSave}
         onLoadSave={handleLoadFromCloud}
@@ -697,12 +773,23 @@ const App = () => {
               <p className="mt-2 text-sm text-white/60">Progresso por reputacao, itens e controle territorial.</p>
             </div>
             <div className="flex items-center gap-2">
+              <span className="rounded-xl border border-white/10 bg-noir-900/70 px-3 py-2 text-xs text-white/60">
+                Slot: {activeSlot ?? '-'}
+              </span>
               <button
                 type="button"
                 onClick={() => setScreen('saves')}
                 className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:border-white/30"
               >
                 Saves
+              </button>
+              <button
+                type="button"
+                onClick={() => saveCurrentProgress()}
+                disabled={apiStatus.loading || !activeSlot}
+                className="rounded-xl border border-neon-amber/40 bg-neon-amber/10 px-3 py-2 text-xs font-semibold text-neon-amber transition hover:bg-neon-amber/20 disabled:opacity-50"
+              >
+                Salvar
               </button>
               <button
                 type="button"

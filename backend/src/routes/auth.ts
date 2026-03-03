@@ -27,6 +27,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const email = body.email.trim().toLowerCase();
     const username = body.username.trim();
 
+    // Garante unicidade por email e username.
     const existing = await UserModel.findOne({
       $or: [{ email }, { username }]
     }).lean();
@@ -38,6 +39,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const passwordHash = await bcrypt.hash(body.password, 10);
     const user = await UserModel.create({ email, username, passwordHash });
 
+    // O token identifica o usuario pelo claim "sub".
     const token = await reply.jwtSign({ sub: user._id.toString(), email: user.email });
     return reply.code(201).send({ token, user: sanitizeUser(user) });
   });
@@ -69,6 +71,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/auth/me', { preHandler: [app.authenticate] }, async (request, reply) => {
+    // request.user eh preenchido pelo @fastify/jwt apos jwtVerify().
     const userId = request.user.sub;
     if (!userId) {
       return reply.code(401).send({ message: 'unauthorized' });

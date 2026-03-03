@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { SaveGameModel } from '../models/SaveGame.js';
 
 export const gameRoutes: FastifyPluginAsync = async (app) => {
+  // Endpoint leve para o frontend descobrir modulos e recursos disponiveis.
   app.get('/game/config', async () => ({
     tick: 'manual',
     resources: ['cash', 'influence', 'respect'],
@@ -9,6 +10,7 @@ export const gameRoutes: FastifyPluginAsync = async (app) => {
   }));
 
   app.get('/game/leaderboard', async (_request, reply) => {
+    // Ranking por usuario consolidando o melhor progresso entre seus saves.
     const leaderboard = await SaveGameModel.aggregate([
       { $sort: { updatedAt: -1 } },
       {

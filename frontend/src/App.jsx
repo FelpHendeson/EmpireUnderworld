@@ -25,6 +25,7 @@ const SLOT_IDS = ['slot-1', 'slot-2', 'slot-3'];
 const TOKEN_STORAGE_KEY = 'underworld_auth_token';
 const AUTO_SAVE_INTERVAL_MS = 30000;
 
+// Prepara metadados de cada slot antes de existir save persistido na nuvem.
 const createInitialSlotDrafts = () =>
   SLOT_IDS.reduce((acc, slot) => {
     acc[slot] = { playerName: '', saveName: 'Campanha principal' };
@@ -92,6 +93,7 @@ const canCommitCrime = (state, crime) => {
   return hasItems && hasRanks;
 };
 
+// Remove estados visuais/ephemeros antes de serializar para o backend.
 const extractSavableState = (state) => ({
   ...state,
   combatReport: null,
@@ -241,6 +243,7 @@ const reducer = (state, action) => {
 
       const ourPower = state.members.reduce((total, member) => total + getRankPower(member.rank), 0);
       const enemyPower = selectedNeighborhood.dominantOrg.powerLevel;
+      // Chance de vitoria limitada para evitar extremos e manter progressao.
       const winChance = clamp(ourPower / (enemyPower + 1), 0.1, 0.9);
       const victory = Math.random() <= winChance;
 
@@ -505,6 +508,7 @@ const App = () => {
   const [apiStatus, setApiStatus] = useState({ loading: false, error: '' });
   const stateRef = useRef(state);
 
+  // Mantem referencia sempre atual para o autosave sem depender de closure antiga.
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -539,6 +543,7 @@ const App = () => {
   }, [cloudSaves]);
 
   useEffect(() => {
+    // Persiste token para restaurar sessao apos refresh.
     if (authToken) {
       localStorage.setItem(TOKEN_STORAGE_KEY, authToken);
     } else {
@@ -727,6 +732,7 @@ const App = () => {
       return undefined;
     }
 
+    // Auto-save periodico para reduzir perda de progresso entre sessoes.
     const timer = setInterval(() => {
       saveCurrentProgress({ silent: true });
     }, AUTO_SAVE_INTERVAL_MS);

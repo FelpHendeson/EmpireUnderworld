@@ -37,6 +37,7 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
     };
     let normalizedState: Record<string, unknown> | null = null;
 
+    // Aceita state como objeto ou string JSON para facilitar clientes diferentes.
     if (body.state && typeof body.state === 'object') {
       normalizedState = body.state as Record<string, unknown>;
     }
@@ -56,6 +57,7 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ message: 'state object is required' });
     }
 
+    // Alguns campos de resumo sao espelhados para busca/listagem rapida.
     const safeState = normalizedState;
     const day = Number((safeState as any).day ?? 1);
     const resources = ((safeState as any).resources ?? {

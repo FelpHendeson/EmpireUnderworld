@@ -1,5 +1,6 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api';
 
+// Normaliza erros HTTP em Error(message) para consumo direto na UI.
 const parseResponse = async (response) => {
   if (response.status === 204) {
     return null;

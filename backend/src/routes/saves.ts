@@ -1,6 +1,58 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { SaveGameModel } from '../models/SaveGame.js';
 
+const ALLOWED_SLOTS = new Set(['slot-1', 'slot-2', 'slot-3']);
+const MAX_STATE_BYTES = 512_000;
+
+const toSafeNumber = (value: unknown, fallback = 0) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const toSafeNonNegativeNumber = (value: unknown, fallback = 0) =>
+  Math.max(0, toSafeNumber(value, fallback));
+
+const normalizeSlot = (slot: string) => slot.trim().toLowerCase();
+
+const ensureValidSlot = (slot: string) => ALLOWED_SLOTS.has(slot);
+
+const normalizeStatePayload = (value: unknown): Record<string, unknown> | null => {
+  if (value && typeof value === 'object') {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+};
+
+const getPayloadByteSize = (payload: Record<string, unknown>) => {
+  try {
+    return Buffer.byteLength(JSON.stringify(payload), 'utf8');
+  } catch {
+    return MAX_STATE_BYTES + 1;
+  }
+};
+
+const normalizeResources = (input: unknown) => {
+  const resources = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+
+  return {
+    cash: toSafeNonNegativeNumber(resources.cash),
+    influence: toSafeNonNegativeNumber(resources.influence),
+    respect: toSafeNonNegativeNumber(resources.respect)
+  };
+};
+
 const toSummary = (save: any) => ({
   slot: save.slot,
   name: save.name,
@@ -22,16 +74,20 @@ const extractStateMeta = (state: Record<string, unknown>) => {
     return Boolean((objective as Record<string, unknown>).completed);
   }).length;
 
+  const stateVersion = Math.max(1, Math.floor(toSafeNumber(state.stateVersion, 1)));
+  const playerLevel = Math.max(1, Math.floor(toSafeNumber(player.level, 1)));
+  const playerXp = Math.floor(toSafeNonNegativeNumber(player.xp));
+
   return {
-    stateVersion: Number(state.stateVersion ?? 1),
+    stateVersion,
     meta: {
-      playerLevel: Number(player.level ?? 1),
-      playerXp: Number(player.xp ?? 0),
+      playerLevel,
+      playerXp,
       crimesCommitted: crimeHistory.length,
       objectivesCompleted,
       lastStoryEntry:
         typeof seenStoryEntries[seenStoryEntries.length - 1] === 'string'
-          ? (seenStoryEntries[seenStoryEntries.length - 1] as string)
+          ? (seenStoryEntries[seenStoryEntries.length - 1] as string).slice(0, 160)
           : ''
     }
   };
@@ -41,14 +97,21 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
   app.get('/saves', { preHandler: [app.authenticate] }, async (request, reply) => {
     const userId = request.user.sub;
     const saves = await SaveGameModel.find({ userId }).sort({ updatedAt: -1 }).lean();
-    return reply.send({ saves: saves.map(toSummary) });
+    return reply.send({
+      saves: saves.filter((save) => ensureValidSlot(save.slot)).map(toSummary)
+    });
   });
 
   app.get('/saves/:slot', { preHandler: [app.authenticate] }, async (request, reply) => {
     const userId = request.user.sub;
     const params = request.params as { slot: string };
+    const slot = normalizeSlot(params.slot);
 
-    const save = await SaveGameModel.findOne({ userId, slot: params.slot }).lean();
+    if (!ensureValidSlot(slot)) {
+      return reply.code(400).send({ message: 'invalid slot' });
+    }
+
+    const save = await SaveGameModel.findOne({ userId, slot }).lean();
     if (!save) {
       return reply.code(404).send({ message: 'save not found' });
     }
@@ -59,47 +122,38 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
   app.put('/saves/:slot', { preHandler: [app.authenticate] }, async (request, reply) => {
     const userId = request.user.sub;
     const params = request.params as { slot: string };
+    const slot = normalizeSlot(params.slot);
     const body = request.body as {
       name?: string;
       state?: Record<string, unknown> | string;
     };
-    let normalizedState: Record<string, unknown> | null = null;
 
-    // Aceita state como objeto ou string JSON para facilitar clientes diferentes.
-    if (body.state && typeof body.state === 'object') {
-      normalizedState = body.state as Record<string, unknown>;
+    if (!ensureValidSlot(slot)) {
+      return reply.code(400).send({ message: 'invalid slot' });
     }
 
-    if (body.state && typeof body.state === 'string') {
-      try {
-        const parsed = JSON.parse(body.state);
-        if (parsed && typeof parsed === 'object') {
-          normalizedState = parsed as Record<string, unknown>;
-        }
-      } catch {
-        normalizedState = null;
-      }
-    }
+    const normalizedState = normalizeStatePayload(body.state);
 
     if (!normalizedState) {
       return reply.code(400).send({ message: 'state object is required' });
     }
 
+    const statePayloadBytes = getPayloadByteSize(normalizedState);
+    if (statePayloadBytes > MAX_STATE_BYTES) {
+      return reply.code(413).send({ message: `state payload exceeds ${MAX_STATE_BYTES} bytes` });
+    }
+
     // Alguns campos de resumo sao espelhados para busca/listagem rapida.
     const safeState = normalizedState;
-    const day = Number((safeState as any).day ?? 1);
-    const resources = ((safeState as any).resources ?? {
-      cash: 0,
-      influence: 0,
-      respect: 0
-    }) as { cash: number; influence: number; respect: number };
+    const day = Math.max(1, Math.floor(toSafeNumber((safeState as any).day, 1)));
+    const resources = normalizeResources((safeState as any).resources);
     const { stateVersion, meta } = extractStateMeta(safeState);
 
     const save = await SaveGameModel.findOneAndUpdate(
-      { userId, slot: params.slot },
+      { userId, slot },
       {
-        slot: params.slot,
-        name: body.name?.trim() || `Save ${params.slot}`,
+        slot,
+        name: body.name?.trim() || `Save ${slot}`,
         day,
         resources,
         stateVersion,
@@ -115,8 +169,13 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/saves/:slot', { preHandler: [app.authenticate] }, async (request, reply) => {
     const userId = request.user.sub;
     const params = request.params as { slot: string };
+    const slot = normalizeSlot(params.slot);
 
-    const deleted = await SaveGameModel.findOneAndDelete({ userId, slot: params.slot }).lean();
+    if (!ensureValidSlot(slot)) {
+      return reply.code(400).send({ message: 'invalid slot' });
+    }
+
+    const deleted = await SaveGameModel.findOneAndDelete({ userId, slot }).lean();
     if (!deleted) {
       return reply.code(404).send({ message: 'save not found' });
     }

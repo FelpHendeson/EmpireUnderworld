@@ -6,6 +6,7 @@ import {
   getSkillsView
 } from '../game/modules/skills';
 import { getPrologueModal } from '../game/modules/story';
+import { createRecruitPool } from '../game/modules/recruits';
 
 // Estados de progresso territorial no mapa.
 export const presenceStates = ['Inexistente', 'Infiltrado', 'Disputado', 'Dominado'];
@@ -122,9 +123,6 @@ export const blackMarketItems = [
     effects: {}
   }
 ];
-
-// O inicio da campanha sera apenas o personagem principal.
-export const recruitPool = [];
 
 // Mapa base da campanha, com hierarquia pais > estado > cidade > bairro.
 export const worldMap = [
@@ -252,8 +250,14 @@ export const createInitialState = (playerName = 'Jogador', backstoryId = backsto
     xp: 0,
     unspentPoints: 0
   };
+  const initialRecruitPool = createRecruitPool({
+    day: 1,
+    size: 3,
+    takenNames: [normalizedPlayerName]
+  });
 
   return {
+    stateVersion: 2,
     day: 1,
     resources: {
       cash: 0,
@@ -285,7 +289,7 @@ export const createInitialState = (playerName = 'Jogador', backstoryId = backsto
         level: basePlayer.level
       }
     ],
-    recruitPool,
+    recruitPool: initialRecruitPool,
     crimes,
     blackMarket: blackMarketItems,
     objectives: createInitialMissions(),

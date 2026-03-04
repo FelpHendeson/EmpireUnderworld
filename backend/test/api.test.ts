@@ -5,7 +5,7 @@ let app: any;
 let connectMongo: (typeof import('../src/lib/mongo.js'))['connectMongo'];
 let disconnectMongo: (typeof import('../src/lib/mongo.js'))['disconnectMongo'];
 
-const registerAndGetToken = async () => {
+const registerAndGetSession = async () => {
   const unique = Math.random().toString(36).slice(2, 8);
   const registerResponse = await app.inject({
     method: 'POST',
@@ -19,7 +19,15 @@ const registerAndGetToken = async () => {
 
   expect(registerResponse.statusCode).toBe(201);
   const body = registerResponse.json();
-  return body.token as string;
+  return {
+    token: body.token as string,
+    user: body.user as { id: string; username: string; email: string }
+  };
+};
+
+const registerAndGetToken = async () => {
+  const session = await registerAndGetSession();
+  return session.token;
 };
 
 beforeAll(async () => {
@@ -194,5 +202,93 @@ describe('Save routes', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().save.day).toBe(9);
+  });
+
+  it('rejects invalid save slot ids', async () => {
+    const token = await registerAndGetToken();
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/saves/slot-99',
+      headers: {
+        authorization: `Bearer ${token}`
+      },
+      payload: {
+        state: {
+          day: 1,
+          resources: { cash: 0, influence: 0, respect: 0 }
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().message).toBe('invalid slot');
+  });
+
+  it('rejects oversized state payloads', async () => {
+    const token = await registerAndGetToken();
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/saves/slot-1',
+      headers: {
+        authorization: `Bearer ${token}`
+      },
+      payload: {
+        state: {
+          day: 1,
+          blob: 'x'.repeat(520_000)
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json().message).toContain('state payload exceeds');
+  });
+});
+
+describe('Game routes', () => {
+  it('returns config and leaderboard entries with username', async () => {
+    const session = await registerAndGetSession();
+
+    const saveResponse = await app.inject({
+      method: 'PUT',
+      url: '/api/saves/slot-1',
+      headers: {
+        authorization: `Bearer ${session.token}`
+      },
+      payload: {
+        name: 'Campanha ranking',
+        state: {
+          day: 7,
+          resources: { cash: 777, influence: 3, respect: 5 }
+        }
+      }
+    });
+
+    expect(saveResponse.statusCode).toBe(200);
+
+    const config = await app.inject({
+      method: 'GET',
+      url: '/api/game/config'
+    });
+    expect(config.statusCode).toBe(200);
+    expect(config.json().saveSlots).toEqual(['slot-1', 'slot-2', 'slot-3']);
+    expect(config.json().stateVersion).toBe(2);
+
+    const leaderboard = await app.inject({
+      method: 'GET',
+      url: '/api/game/leaderboard'
+    });
+
+    expect(leaderboard.statusCode).toBe(200);
+    expect(leaderboard.json().leaderboard).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          username: session.user.username,
+          totalCash: 777
+        })
+      ])
+    );
   });
 });

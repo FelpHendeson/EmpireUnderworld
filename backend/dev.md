@@ -65,9 +65,16 @@ Senha:
 - `state: object | json-string`
 
 Normalizacao no backend:
+- slots aceitos: `slot-1`, `slot-2`, `slot-3` (fora disso retorna `400 invalid slot`).
 - se `state` vier string, tenta `JSON.parse`.
 - se invalido, responde `400 state object is required`.
+- payload de `state` acima de `512000` bytes retorna `413`.
 - espelha `day` e `resources` de `state` para facilitar listagem/ranking.
+- faz sanitizacao numerica de `day/resources/meta` para evitar `NaN`/valores negativos.
+
+### Game metadata
+- `/api/game/config` informa `stateVersion` atual e `saveSlots` suportados.
+- `/api/game/leaderboard` agrega por melhor progresso e devolve `username` junto dos totais.
 
 ## Regras de dados
 - Usuario unico por `email` e `username`.

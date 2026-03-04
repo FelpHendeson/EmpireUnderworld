@@ -11,12 +11,14 @@ Fluxo principal:
 
 ## Estrutura
 - `src/main.jsx`: entrada React.
-- `src/App.jsx`: tela completa do jogo + auth + saves + reducer.
+- `src/App.jsx`: composicao das telas (`auth`, `saves`, `game`) e orquestracao de sessao.
+- `src/game/reducer.js`: reducer principal e utilitarios de estado/saves.
+- `src/game/modules/recruits.js`: geracao e renovacao da fila de candidatos.
 - `src/services/api.js`: cliente HTTP (`authApi`, `saveApi`).
 - `src/data/gameData.js`: catalogos e funcoes de regra (crime, mapa, ranks, estado inicial).
 - `src/index.css`: Tailwind base/utilitarios e estilos globais.
 
-## Estado e reducer (`src/App.jsx`)
+## Estado e reducer (`src/game/reducer.js`)
 Estado global guarda:
 - progresso (`day`, `resources`, `activityLog`)
 - mundo (`worldMap`, `selectedLocation`)
@@ -24,7 +26,7 @@ Estado global guarda:
 - UI efemera (`combatReport`, `lastTurnSummary`, `uiInfoPanel`)
 
 Acoes principais:
-- `ADVANCE_DAY`: calcula renda territorial (`calculateTerritoryIncome`).
+- `ADVANCE_DAY`: calcula renda territorial e pode renovar o `recruitPool`.
 - `SET_LOCATION`: seleciona estado/cidade/bairro.
 - `ACTION_COMMIT_CRIME`: executa crime com risco e recompensa.
 - `ACTION_BUY_ITEM`: compra item e aplica efeitos.
@@ -59,6 +61,7 @@ Acoes principais:
 - `rankOrder` e `rankData`: progressao de patentes e poder.
 - `crimes`: tabela de risco/recompensa/requisitos.
 - `blackMarketItems`: itens e efeitos.
+- `createRecruitPool`: inicia a campanha com candidatos recrutaveis.
 - `worldMap`: hierarquia pais > estado > cidade > bairro.
 - `createInitialState(playerName)`: fabrica estado inicial de campanha.
 - `calculateTerritoryIncome`: renda passiva de bairros `Dominado`.
@@ -78,4 +81,4 @@ Exemplo:
 - Nova mecanica: adicionar action no reducer e dados em `gameData.js`.
 - Nova tela: controlar transicao pelo estado `screen` em `App.jsx`.
 - Novo endpoint backend: adicionar metodo em `src/services/api.js` e integrar no fluxo de estado.
-- Se o reducer crescer muito, separar em modulo (`gameReducer.js`) mantendo `App.jsx` para composicao de telas.
+- Mecanicas de recrutamento devem ser ajustadas em `src/game/modules/recruits.js`.

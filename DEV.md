@@ -11,7 +11,7 @@ Essa separacao permite evolucao independente de UI e servicos, sem acoplar regra
 ## 2. Frontend (`frontend/`)
 
 ### 2.1 Estado principal
-O jogo continua com fonte unica de estado via `useReducer` em `frontend/src/App.jsx`.
+O jogo continua com fonte unica de estado via `useReducer`, agora extraido para `frontend/src/game/reducer.js` e consumido pelo `frontend/src/App.jsx`.
 
 Acoes principais:
 - `ADVANCE_DAY`
@@ -23,6 +23,9 @@ Acoes principais:
 - `ACTION_TAKEOVER`
 - `TOGGLE_INFO`
 - `HYDRATE_STATE` (nova: reidrata estado vindo da API)
+
+Melhoria recente de design de gameplay:
+- o sistema de recrutamento agora inicia com candidatos e renova contatos ao longo dos dias para evitar dead-end da mecanica.
 
 ### 2.2 Integracao com API
 Cliente HTTP em `frontend/src/services/api.js`.
@@ -116,6 +119,8 @@ Infra:
 - fallback de erro 401 em autenticacao
 - CORS configuravel por env
 - compatibilidade de payload em saves: `state` como objeto ou JSON stringificado
+- validacao de slot permitido (`slot-1`, `slot-2`, `slot-3`)
+- limite de tamanho do payload de `state` para reduzir abuso e estouro de documento
 
 ## 4. Variaveis de ambiente
 
@@ -145,7 +150,7 @@ Scripts no `package.json` da raiz:
 ## 7. Proximos passos recomendados
 
 1. Criar refresh token e expiracao curta para access token.
-2. Adicionar versao de schema no snapshot (`stateVersion`) para migracoes.
-3. Implementar limites de tamanho e validacao de payload de save com schema.
-4. Criar testes de rotas (`auth` e `saves`) e testes de reducer no frontend.
+2. Criar migrador explicito por `stateVersion` para snapshots legados.
+3. Adicionar schema validation declarativa (Fastify schema) para todas as rotas.
+4. Criar testes de reducer no frontend.
 5. Introduzir fila/event bus para eventos globais (policia, traicao, guerras entre faccoes).

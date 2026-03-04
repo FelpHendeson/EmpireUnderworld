@@ -1,0 +1,28 @@
+{
+  "chapters": [
+    {
+      "id": "chapter-1",
+      "title": "Prologo",
+      "entries": [
+        {
+          "id": "chapter-1-prologue",
+          "title": "Ponta-pe inicial",
+          "text": "{playerName}, aos 14 anos, voce entra no submundo como {backstoryTitle}. O primeiro passo decide seu destino.",
+          "condition": { "type": "campaignStart" }
+        },
+        {
+          "id": "chapter-1-first-crime",
+          "title": "Sem volta",
+          "text": "Seu primeiro crime aconteceu. A cidade passou a notar seu nome.",
+          "condition": { "type": "crimeCountAtLeast", "value": 1 }
+        },
+        {
+          "id": "chapter-1-level-2",
+          "title": "Primeira ascensao",
+          "text": "Voce chegou ao nivel 2. Agora sua reputacao comeca a abrir portas.",
+          "condition": { "type": "playerLevelAtLeast", "value": 2 }
+        }
+      ]
+    }
+  ]
+}

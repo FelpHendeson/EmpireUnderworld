@@ -13,6 +13,7 @@ import {
   Users
 } from 'lucide-react';
 import {
+  backstoryOptions,
   calculateTerritoryIncome,
   createInitialState,
   getNextRank,
@@ -20,6 +21,11 @@ import {
   rankData
 } from './data/gameData';
 import { authApi, saveApi } from './services/api';
+import { resolveCrimeEvent } from './game/modules/events';
+import { applyMissionSystem } from './game/modules/missions';
+import { applyXpGain, distributeAttributePoint } from './game/modules/progression';
+import { applySkillUnlocks, getSkillsView } from './game/modules/skills';
+import { getStoryModalFromState } from './game/modules/story';
 
 const SLOT_IDS = ['slot-1', 'slot-2', 'slot-3'];
 const TOKEN_STORAGE_KEY = 'underworld_auth_token';
@@ -28,7 +34,11 @@ const AUTO_SAVE_INTERVAL_MS = 30000;
 // Prepara metadados de cada slot antes de existir save persistido na nuvem.
 const createInitialSlotDrafts = () =>
   SLOT_IDS.reduce((acc, slot) => {
-    acc[slot] = { playerName: '', saveName: 'Campanha principal' };
+    acc[slot] = {
+      playerName: '',
+      saveName: 'Campanha principal',
+      backstoryId: backstoryOptions[0].id
+    };
     return acc;
   }, {});
 
@@ -53,7 +63,6 @@ const applyResourceDelta = (resources, delta) => ({
   respect: resources.respect + (delta.respect ?? 0)
 });
 
-const getLevelFromXp = (xp) => 1 + Math.floor(xp / 50);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const updateNeighborhood = (worldMap, ids, updater) =>
@@ -93,12 +102,119 @@ const canCommitCrime = (state, crime) => {
   return hasItems && hasRanks;
 };
 
+const normalizeLoadedState = (payload) => {
+  const seedName = payload?.player?.name ?? payload?.members?.[0]?.name ?? 'Jogador';
+  const seedBackstory = payload?.player?.backstoryId ?? backstoryOptions[0].id;
+  const base = createInitialState(seedName, seedBackstory);
+
+  const merged = {
+    ...base,
+    ...payload,
+    resources: { ...base.resources, ...(payload?.resources ?? {}) },
+    selectedLocation: { ...base.selectedLocation, ...(payload?.selectedLocation ?? {}) },
+    player: { ...base.player, ...(payload?.player ?? {}) },
+    storyFlags: { ...base.storyFlags, ...(payload?.storyFlags ?? {}) },
+    members: payload?.members?.length ? payload.members : base.members,
+    objectives: payload?.objectives?.length ? payload.objectives : base.objectives,
+    crimeHistory: Array.isArray(payload?.crimeHistory) ? payload.crimeHistory : base.crimeHistory,
+    eventCounters:
+      payload?.eventCounters && typeof payload.eventCounters === 'object'
+        ? payload.eventCounters
+        : base.eventCounters,
+    seenStoryEntries: Array.isArray(payload?.seenStoryEntries)
+      ? payload.seenStoryEntries
+      : base.seenStoryEntries,
+    storyModal: null,
+    combatReport: null,
+    lastTurnSummary: null,
+    uiInfoPanel: null
+  };
+
+  const normalizedSkills =
+    merged.player.skillLevels && typeof merged.player.skillLevels === 'object'
+      ? merged.player.skillLevels
+      : base.player.skillLevels;
+
+  const withSkills = {
+    ...merged,
+    player: {
+      ...merged.player,
+      skillLevels: normalizedSkills,
+      skills: getSkillsView(normalizedSkills)
+    }
+  };
+
+  return applyMissionSystem(withSkills);
+};
+
+const applyPostActionSystems = (state) => {
+  const withMissions = applyMissionSystem(state);
+  const unlockedResult = applySkillUnlocks(
+    withMissions.player.skillLevels ?? {},
+    withMissions.eventCounters ?? {}
+  );
+  const hasSkillUnlock = unlockedResult.unlocked.length > 0;
+  const withSkills = hasSkillUnlock
+    ? {
+        ...withMissions,
+        player: {
+          ...withMissions.player,
+          skillLevels: unlockedResult.skillLevels,
+          skills: getSkillsView(unlockedResult.skillLevels),
+          attack:
+            withMissions.player.attack +
+            unlockedResult.unlocked.reduce((sum, skill) => sum + (skill.effects.attack ?? 0), 0),
+          defense:
+            withMissions.player.defense +
+            unlockedResult.unlocked.reduce((sum, skill) => sum + (skill.effects.defense ?? 0), 0),
+          speed:
+            withMissions.player.speed +
+            unlockedResult.unlocked.reduce((sum, skill) => sum + (skill.effects.speed ?? 0), 0),
+          combatProficiency:
+            withMissions.player.combatProficiency +
+            unlockedResult.unlocked.reduce(
+              (sum, skill) => sum + (skill.effects.combatProficiency ?? 0),
+              0
+            ),
+          maxHealth:
+            withMissions.player.maxHealth +
+            unlockedResult.unlocked.reduce((sum, skill) => sum + (skill.effects.health ?? 0), 0),
+          health:
+            withMissions.player.health +
+            unlockedResult.unlocked.reduce((sum, skill) => sum + (skill.effects.health ?? 0), 0)
+        },
+        activityLog: [
+          ...unlockedResult.unlocked.map(
+            (entry) => `Skill desbloqueada: ${entry.name} (nivel ${entry.level}).`
+          ),
+          ...withMissions.activityLog
+        ].slice(0, 20)
+      }
+    : withMissions;
+
+  if (withSkills.storyModal) {
+    return withSkills;
+  }
+
+  const storyModal = getStoryModalFromState(withSkills);
+  if (!storyModal) {
+    return withSkills;
+  }
+
+  return {
+    ...withSkills,
+    storyModal,
+    seenStoryEntries: [...withSkills.seenStoryEntries, storyModal.id]
+  };
+};
+
 // Remove estados visuais/ephemeros antes de serializar para o backend.
 const extractSavableState = (state) => ({
   ...state,
   combatReport: null,
   lastTurnSummary: null,
-  uiInfoPanel: null
+  uiInfoPanel: null,
+  storyModal: null
 });
 
 const reducer = (state, action) => {
@@ -106,12 +222,12 @@ const reducer = (state, action) => {
     case 'ADVANCE_DAY': {
       const income = calculateTerritoryIncome(state.worldMap);
       const nextResources = applyResourceDelta(state.resources, income);
-      return {
+      return applyPostActionSystems({
         ...state,
         day: state.day + 1,
         resources: nextResources,
         lastTurnSummary: income
-      };
+      });
     }
     case 'SET_LOCATION': {
       return {
@@ -124,30 +240,86 @@ const reducer = (state, action) => {
       if (!crime || !canCommitCrime(state, crime)) {
         return state;
       }
+      const eventResult = resolveCrimeEvent(crime);
       const success = Math.random() > crime.risk;
-      const xpGain = success ? crime.rewards.xp : Math.round(crime.rewards.xp / 3);
+      const baseXp = success ? crime.rewards.xp : Math.round(crime.rewards.xp / 3);
+      const xpGain = baseXp;
+      const nextPlayer = applyXpGain(state.player, xpGain);
       const updatedMembers = state.members.map((member, index) =>
         index === 0
           ? {
               ...member,
-              xp: member.xp + xpGain,
-              level: getLevelFromXp(member.xp + xpGain)
+              xp: nextPlayer.xp,
+              level: nextPlayer.level
             }
           : member
       );
-      return {
+      return applyPostActionSystems({
         ...state,
+        eventCounters: eventResult.eventTags.reduce(
+          (acc, tag) => ({
+            ...acc,
+            [tag]: (acc[tag] ?? 0) + 1
+          }),
+          state.eventCounters
+        ),
         members: updatedMembers,
         resources: applyResourceDelta(
           state.resources,
-          success ? crime.rewards : { respect: -1 }
+          success
+            ? {
+                ...crime.rewards,
+                cash: (crime.rewards.cash ?? 0) + (eventResult.effects.cash ?? 0),
+                respect: (crime.rewards.respect ?? 0) + (eventResult.effects.respect ?? 0)
+              }
+            : { respect: -1 + (eventResult.effects.respect ?? 0), cash: eventResult.effects.cash ?? 0 }
         ),
+        combatReport:
+          eventResult.type === 'combat' ? eventResult.text : state.combatReport,
+        player: {
+          ...nextPlayer,
+          health: Math.max(
+            1,
+            Math.min(nextPlayer.maxHealth, nextPlayer.health + (eventResult.effects.health ?? 0))
+          )
+        },
+        crimeHistory: [
+          {
+            id: nanoid(),
+            crimeId: crime.id,
+            crimeName: crime.name,
+            success,
+            day: state.day,
+            xpGain,
+            cashDelta: success
+              ? (crime.rewards.cash ?? 0) + (eventResult.effects.cash ?? 0)
+              : eventResult.effects.cash ?? 0,
+            respectDelta: success
+              ? (crime.rewards.respect ?? 0) + (eventResult.effects.respect ?? 0)
+              : -1 + (eventResult.effects.respect ?? 0),
+            eventType: eventResult.type
+          },
+          ...state.crimeHistory
+        ].slice(0, 500),
         activityLog: [
+          eventResult.text,
           success
             ? `Crime realizado: ${crime.name}. O caixa aumentou.`
             : `Crime falhou: ${crime.name}. A policia ficou alerta.`,
           ...state.activityLog
-        ].slice(0, 12)
+        ].slice(0, 20)
+      });
+    }
+    case 'DISTRIBUTE_PLAYER_POINT': {
+      const { attribute } = action.payload;
+      if (!['health', 'attack', 'defense', 'combatProficiency', 'speed'].includes(attribute)) {
+        return state;
+      }
+      const nextPlayer = distributeAttributePoint(state.player, attribute);
+
+      return {
+        ...state,
+        player: nextPlayer
       };
     }
     case 'ACTION_BUY_ITEM': {
@@ -303,11 +475,17 @@ const reducer = (state, action) => {
       };
     }
     case 'HYDRATE_STATE': {
+      return normalizeLoadedState(action.payload);
+    }
+    case 'CLOSE_STORY_MODAL': {
+      const modalId = state.storyModal?.id;
       return {
-        ...action.payload,
-        combatReport: null,
-        lastTurnSummary: null,
-        uiInfoPanel: null
+        ...state,
+        seenStoryEntries:
+          modalId && !(state.seenStoryEntries ?? []).includes(modalId)
+            ? [...(state.seenStoryEntries ?? []), modalId]
+            : state.seenStoryEntries,
+        storyModal: null
       };
     }
     default:
@@ -398,6 +576,7 @@ const SaveScreen = ({
   authUser,
   savesBySlot,
   slotDrafts,
+  availableBackstories,
   onSlotDraftChange,
   apiStatus,
   onCreateSave,
@@ -428,7 +607,11 @@ const SaveScreen = ({
       <div className="mt-8 grid gap-6 md:grid-cols-3">
         {SLOT_IDS.map((slot) => {
           const save = savesBySlot[slot];
-          const draft = slotDrafts[slot] ?? { playerName: '', saveName: 'Campanha principal' };
+          const draft = slotDrafts[slot] ?? {
+            playerName: '',
+            saveName: 'Campanha principal',
+            backstoryId: availableBackstories[0]?.id
+          };
           return (
             <article key={slot} className="rounded-3xl border border-white/10 bg-noir-900/70 p-5">
               <p className="text-xs uppercase tracking-[0.25em] text-white/50">{slot}</p>
@@ -474,6 +657,17 @@ const SaveScreen = ({
                       placeholder="Nome da campanha"
                       className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
                     />
+                    <select
+                      value={draft.backstoryId}
+                      onChange={(event) => onSlotDraftChange(slot, 'backstoryId', event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+                    >
+                      {availableBackstories.map((backstory) => (
+                        <option key={backstory.id} value={backstory.id}>
+                          {backstory.title}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <button
                     type="button"
@@ -670,7 +864,11 @@ const App = () => {
 
   const handleCreateSave = async (slot) => {
     if (!authToken) return;
-    const draft = slotDrafts[slot] ?? { playerName: '', saveName: 'Campanha principal' };
+    const draft = slotDrafts[slot] ?? {
+      playerName: '',
+      saveName: 'Campanha principal',
+      backstoryId: backstoryOptions[0].id
+    };
     const normalizedPlayerName = draft.playerName.trim();
     if (!normalizedPlayerName) {
       setApiStatus({ loading: false, error: 'Informe o nome do personagem para comecar.' });
@@ -679,7 +877,7 @@ const App = () => {
 
     try {
       setApiStatus({ loading: true, error: '' });
-      const freshState = createInitialState(normalizedPlayerName);
+      const freshState = createInitialState(normalizedPlayerName, draft.backstoryId);
       const campaignName = draft.saveName.trim() || `Campanha ${slot}`;
       await saveApi.save(authToken, slot, {
         name: campaignName,
@@ -758,6 +956,7 @@ const App = () => {
         authUser={authUser}
         savesBySlot={savesBySlot}
         slotDrafts={slotDrafts}
+        availableBackstories={backstoryOptions}
         onSlotDraftChange={updateSlotDraft}
         apiStatus={apiStatus}
         onCreateSave={handleCreateSave}
@@ -828,6 +1027,123 @@ const App = () => {
             <ResourceCard label="Respeito" value={`+${state.resources.respect}`} icon={Swords} />
           </div>
         </header>
+
+        <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_1fr]">
+          <article className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-white/50">Status do player</p>
+                <h2 className="mt-2 text-lg font-semibold">{state.player.name}</h2>
+                <p className="text-xs text-white/60">
+                  {state.player.backstoryTitle} | {state.player.age} anos
+                </p>
+              </div>
+              <span className="rounded-lg border border-neon-blue/40 bg-neon-blue/10 px-3 py-1 text-xs text-neon-blue">
+                Nivel {state.player.level}
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+              <p>Saude: {state.player.health}/{state.player.maxHealth}</p>
+              <p>Ataque: {state.player.attack}</p>
+              <p>Defesa: {state.player.defense}</p>
+              <p>Velocidade: {state.player.speed}</p>
+              <p>Proeza: {state.player.combatProficiency}</p>
+              <p>XP: {state.player.xp}</p>
+              <p>Pontos livres: {state.player.unspentPoints}</p>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({ type: 'DISTRIBUTE_PLAYER_POINT', payload: { attribute: 'health' } })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Saude
+              </button>
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({ type: 'DISTRIBUTE_PLAYER_POINT', payload: { attribute: 'attack' } })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Ataque
+              </button>
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({ type: 'DISTRIBUTE_PLAYER_POINT', payload: { attribute: 'defense' } })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Defesa
+              </button>
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({
+                    type: 'DISTRIBUTE_PLAYER_POINT',
+                    payload: { attribute: 'combatProficiency' }
+                  })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Proeza
+              </button>
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({
+                    type: 'DISTRIBUTE_PLAYER_POINT',
+                    payload: { attribute: 'speed' }
+                  })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Velocidade
+              </button>
+            </div>
+
+            <div className="mt-4 text-xs text-white/60">
+              Skills:{' '}
+              {Array.isArray(state.player.skills) && state.player.skills.length
+                ? state.player.skills
+                    .map((skill) => `${skill.name} Nv.${skill.level} (${skill.type})`)
+                    .join(', ')
+                : 'Sem skills'}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
+            <p className="text-xs uppercase tracking-[0.3em] text-white/50">Objetivos da historia</p>
+            <div className="mt-3 space-y-2">
+              {state.objectives.map((objective) => (
+                <div key={objective.id} className="rounded-xl border border-white/10 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold">{objective.name}</p>
+                    <span className={objective.completed ? 'text-green-300' : 'text-white/60'}>
+                      {objective.completed
+                        ? 'Concluido'
+                        : `${Math.min(objective.progress, objective.target)}/${objective.target}`}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-white/60">{objective.description}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-white/60">
+              Atos criminosos registrados: {state.crimeHistory.length}
+            </p>
+          </article>
+        </section>
 
         {state.lastTurnSummary && (
           <section className="mt-6 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-3 text-sm text-white/70">
@@ -1078,6 +1394,24 @@ const App = () => {
             ))}
           </div>
         </section>
+
+        {state.storyModal && (
+          <section className="mt-10 rounded-2xl border border-neon-pink/40 bg-neon-pink/10 px-5 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-neon-pink">{state.storyModal.title}</p>
+                <p className="mt-2 text-xs text-white/70">{state.storyModal.text}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => dispatch({ type: 'CLOSE_STORY_MODAL' })}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70"
+              >
+                Fechar
+              </button>
+            </div>
+          </section>
+        )}
 
         {state.uiInfoPanel && (
           <section className="mt-10 rounded-2xl border border-neon-blue/30 bg-noir-900/80 px-5 py-4">

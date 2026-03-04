@@ -6,8 +6,36 @@ const toSummary = (save: any) => ({
   name: save.name,
   day: save.day,
   resources: save.resources,
+  stateVersion: save.stateVersion ?? 1,
+  meta: save.meta ?? {},
   updatedAt: save.updatedAt
 });
+
+const extractStateMeta = (state: Record<string, unknown>) => {
+  const player = (state.player ?? {}) as Record<string, unknown>;
+  const objectives = Array.isArray(state.objectives) ? state.objectives : [];
+  const crimeHistory = Array.isArray(state.crimeHistory) ? state.crimeHistory : [];
+  const seenStoryEntries = Array.isArray(state.seenStoryEntries) ? state.seenStoryEntries : [];
+
+  const objectivesCompleted = objectives.filter((objective) => {
+    if (!objective || typeof objective !== 'object') return false;
+    return Boolean((objective as Record<string, unknown>).completed);
+  }).length;
+
+  return {
+    stateVersion: Number(state.stateVersion ?? 1),
+    meta: {
+      playerLevel: Number(player.level ?? 1),
+      playerXp: Number(player.xp ?? 0),
+      crimesCommitted: crimeHistory.length,
+      objectivesCompleted,
+      lastStoryEntry:
+        typeof seenStoryEntries[seenStoryEntries.length - 1] === 'string'
+          ? (seenStoryEntries[seenStoryEntries.length - 1] as string)
+          : ''
+    }
+  };
+};
 
 export const saveRoutes: FastifyPluginAsync = async (app) => {
   app.get('/saves', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -65,6 +93,7 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
       influence: 0,
       respect: 0
     }) as { cash: number; influence: number; respect: number };
+    const { stateVersion, meta } = extractStateMeta(safeState);
 
     const save = await SaveGameModel.findOneAndUpdate(
       { userId, slot: params.slot },
@@ -73,6 +102,8 @@ export const saveRoutes: FastifyPluginAsync = async (app) => {
         name: body.name?.trim() || `Save ${params.slot}`,
         day,
         resources,
+        stateVersion,
+        meta,
         state: safeState
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }

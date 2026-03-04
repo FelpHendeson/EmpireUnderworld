@@ -1,0 +1,37 @@
+[
+  {
+    "id": "street-fight",
+    "name": "Luta de Rua",
+    "type": "passive",
+    "levels": [
+      {
+        "level": 1,
+        "title": "Iniciante nas brigas",
+        "description": "O personagem tem boa desenvoltura, mas ainda sem a malicia das ruas.",
+        "effects": { "attack": 2, "speed": 2 },
+        "unlockCondition": { "type": "eventCount", "eventId": "street-fight", "minCount": 1 }
+      },
+      {
+        "level": 2,
+        "title": "Malicia de Rua",
+        "description": "O personagem ganhou experiencia e luta sem hesitar.",
+        "effects": { "attack": 3, "speed": 2 },
+        "unlockCondition": { "type": "eventCount", "eventId": "street-fight", "minCount": 5 }
+      }
+    ]
+  },
+  {
+    "id": "punch",
+    "name": "Soco",
+    "type": "active",
+    "levels": [
+      {
+        "level": 1,
+        "title": "Soco comum",
+        "description": "Ataque basico corpo a corpo.",
+        "effects": {},
+        "unlockCondition": { "type": "none" }
+      }
+    ]
+  }
+]

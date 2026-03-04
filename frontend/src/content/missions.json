@@ -1,0 +1,23 @@
+[
+  {
+    "id": "mission-01",
+    "name": "Primeiro Ato",
+    "description": "Cometa 1 ato criminoso.",
+    "condition": { "type": "crimeCountAtLeast", "value": 1 },
+    "rewards": { "cash": 40, "respect": 1, "xp": 10 }
+  },
+  {
+    "id": "mission-02",
+    "name": "Sangue Frio",
+    "description": "Alcance nivel 3.",
+    "condition": { "type": "playerLevelAtLeast", "value": 3 },
+    "rewards": { "cash": 120, "respect": 2, "skillPoints": 1 }
+  },
+  {
+    "id": "mission-03",
+    "name": "Caixa de Guerra",
+    "description": "Acumule 200 de cash.",
+    "condition": { "type": "cashAtLeast", "value": 200 },
+    "rewards": { "xp": 25, "respect": 1 }
+  }
+]

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "event-furto",
+    "crimeId": "furto",
+    "types": ["loja", "pessoa"],
+    "consequences": [
+      {
+        "id": "furto-combate-seguranca",
+        "type": "combat",
+        "text": "Voce foi pego furtando uma loja. O seguranca te perseguiu e entrou em combate.",
+        "effects": { "cash": -5, "respect": 1, "health": -10 },
+        "eventTags": ["street-fight"]
+      },
+      {
+        "id": "furto-fuga",
+        "type": "escape",
+        "text": "Voce fugiu pelos becos sem ser pego.",
+        "effects": { "cash": 10, "respect": 0, "health": 0 },
+        "eventTags": []
+      },
+      {
+        "id": "furto-acordo",
+        "type": "deal",
+        "text": "Com papo e respeito, voce convenceu o seguranca a fechar um esquema.",
+        "effects": { "cash": 15, "respect": 2, "health": 0 },
+        "eventTags": []
+      }
+    ]
+  },
+  {
+    "id": "event-pequeno-trafico",
+    "crimeId": "pequeno-trafico",
+    "types": ["rua"],
+    "consequences": [
+      {
+        "id": "trafico-pressao-policia",
+        "type": "legal-risk",
+        "text": "Uma viatura rondou a area e voce precisou baixar a cabeca.",
+        "effects": { "cash": -10, "respect": 1, "health": 0 },
+        "eventTags": []
+      },
+      {
+        "id": "trafico-venda-forte",
+        "type": "success",
+        "text": "A venda foi forte e sua reputacao cresceu no bairro.",
+        "effects": { "cash": 20, "respect": 1, "health": 0 },
+        "eventTags": []
+      }
+    ]
+  }
+]

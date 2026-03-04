@@ -11,6 +11,14 @@ const saveGameSchema = new Schema(
       influence: { type: Number, default: 0 },
       respect: { type: Number, default: 0 }
     },
+    stateVersion: { type: Number, default: 1 },
+    meta: {
+      playerLevel: { type: Number, default: 1 },
+      playerXp: { type: Number, default: 0 },
+      crimesCommitted: { type: Number, default: 0 },
+      objectivesCompleted: { type: Number, default: 0 },
+      lastStoryEntry: { type: String, default: '' }
+    },
     state: { type: Schema.Types.Mixed, required: true }
   },
   {

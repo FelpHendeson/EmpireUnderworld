@@ -1,4 +1,11 @@
 import { nanoid } from 'nanoid';
+import { createInitialMissions } from '../game/modules/missions';
+import {
+  computePassiveBonuses,
+  createInitialSkillLevels,
+  getSkillsView
+} from '../game/modules/skills';
+import { getPrologueModal } from '../game/modules/story';
 
 // Estados de progresso territorial no mapa.
 export const presenceStates = ['Inexistente', 'Infiltrado', 'Disputado', 'Dominado'];
@@ -29,6 +36,31 @@ export const rankData = {
     power: 6
   }
 };
+
+// O jogador escolhe a origem no inicio para gerar identidade e replayabilidade.
+export const backstoryOptions = [
+  {
+    id: 'orfao-sobrevivente',
+    title: 'Orfao sobrevivente',
+    summary: 'Perdeu a familia cedo e aprendeu a sobreviver nas ruas.',
+    statBonus: { health: 18, attack: 1, defense: 2, combatProficiency: 1, speed: 1 },
+    startingSkillIds: ['punch']
+  },
+  {
+    id: 'rebeldia-inata',
+    title: 'Rebeldia inata',
+    summary: 'Nunca aceitou autoridade e entrou no crime por escolha.',
+    statBonus: { health: 8, attack: 3, defense: 0, combatProficiency: 2, speed: 1 },
+    startingSkillIds: ['punch']
+  },
+  {
+    id: 'filho-da-rua',
+    title: 'Filho da rua',
+    summary: 'Criado por uma rede informal de rua, com talento social.',
+    statBonus: { health: 12, attack: 1, defense: 1, combatProficiency: 3, speed: 2 },
+    startingSkillIds: ['punch']
+  }
+];
 
 // Catalogo de crimes executaveis pelo jogador.
 export const crimes = [
@@ -91,33 +123,8 @@ export const blackMarketItems = [
   }
 ];
 
-// Candidatos iniciais para recrutamento.
-export const recruitPool = [
-  {
-    id: 'm-ramon',
-    name: 'Ramon',
-    rank: 'Recruta',
-    xp: 0,
-    level: 1,
-    entry: { type: 'respect', value: 2 }
-  },
-  {
-    id: 'm-sarah',
-    name: 'Sarah',
-    rank: 'Recruta',
-    xp: 0,
-    level: 1,
-    entry: { type: 'cash', value: 60 }
-  },
-  {
-    id: 'm-tainara',
-    name: 'Tainara',
-    rank: 'Recruta',
-    xp: 0,
-    level: 1,
-    entry: { type: 'respect', value: 4 }
-  }
-];
+// O inicio da campanha sera apenas o personagem principal.
+export const recruitPool = [];
 
 // Mapa base da campanha, com hierarquia pais > estado > cidade > bairro.
 export const worldMap = [
@@ -224,10 +231,27 @@ export const calculateTerritoryIncome = (mapData) => {
 };
 
 // Fabrica o estado inicial global consumido pelo useReducer.
-export const createInitialState = (playerName = 'Jogador') => {
+export const createInitialState = (playerName = 'Jogador', backstoryId = backstoryOptions[0].id) => {
   const mapWithPresence = attachPresence(worldMap);
   const firstNeighborhood = mapWithPresence[0].states[0].cities[0].neighborhoods[0];
   const normalizedPlayerName = playerName.trim() || 'Jogador';
+  const selectedBackstory =
+    backstoryOptions.find((item) => item.id === backstoryId) ?? backstoryOptions[0];
+  const skillLevels = createInitialSkillLevels(selectedBackstory.startingSkillIds);
+  const passiveBonuses = computePassiveBonuses(skillLevels);
+  const basePlayer = {
+    age: 14,
+    health: 90 + selectedBackstory.statBonus.health + passiveBonuses.health,
+    maxHealth: 90 + selectedBackstory.statBonus.health + passiveBonuses.health,
+    attack: 6 + selectedBackstory.statBonus.attack + passiveBonuses.attack,
+    defense: 4 + selectedBackstory.statBonus.defense + passiveBonuses.defense,
+    speed: 3 + selectedBackstory.statBonus.speed + passiveBonuses.speed,
+    combatProficiency:
+      1 + selectedBackstory.statBonus.combatProficiency + passiveBonuses.combatProficiency,
+    level: 1,
+    xp: 0,
+    unspentPoints: 0
+  };
 
   return {
     day: 1,
@@ -237,7 +261,12 @@ export const createInitialState = (playerName = 'Jogador') => {
       respect: 0
     },
     player: {
-      name: normalizedPlayerName
+      name: normalizedPlayerName,
+      backstoryId: selectedBackstory.id,
+      backstoryTitle: selectedBackstory.title,
+      skillLevels,
+      skills: getSkillsView(skillLevels),
+      ...basePlayer
     },
     worldMap: mapWithPresence,
     selectedLocation: {
@@ -252,14 +281,25 @@ export const createInitialState = (playerName = 'Jogador') => {
         id: nanoid(),
         name: normalizedPlayerName,
         rank: 'Recruta',
-        xp: 0,
-        level: 1
+        xp: basePlayer.xp,
+        level: basePlayer.level
       }
     ],
     recruitPool,
     crimes,
     blackMarket: blackMarketItems,
-    activityLog: ['Voce chegou ao Brasil para comecar do zero.'],
+    objectives: createInitialMissions(),
+    storyFlags: {
+      introShown: false
+    },
+    seenStoryEntries: [],
+    storyModal: getPrologueModal({
+      playerName: normalizedPlayerName,
+      backstoryTitle: selectedBackstory.title
+    }),
+    eventCounters: {},
+    crimeHistory: [],
+    activityLog: ['Voce chegou ao Brasil com 14 anos para comecar do zero.'],
     combatReport: null,
     activeEvent: null,
     lastTurnSummary: null,

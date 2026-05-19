@@ -17,6 +17,8 @@ Acoes principais:
 - `ADVANCE_DAY`
 - `SET_LOCATION`
 - `ACTION_COMMIT_CRIME`
+- `RESOLVE_ACTIVE_EVENT_OPTION`
+- `CLOSE_ACTIVE_EVENT`
 - `ACTION_BUY_ITEM`
 - `ACTION_RECRUIT`
 - `ACTION_PROMOTE`
@@ -26,6 +28,8 @@ Acoes principais:
 
 Melhoria recente de design de gameplay:
 - o sistema de recrutamento agora inicia com candidatos e renova contatos ao longo dos dias para evitar dead-end da mecanica.
+- o sistema de acoes criminais usa rolagens tipo RPG com `d20`, pesos de status, faixas min/medio/max e encontros dinamicos em `activeEvent`.
+- o motor criminal organiza crimes por tier, requisitos de itens/NPCs/patentes e rede local de personagens por bairro.
 
 ### 2.2 Integracao com API
 Cliente HTTP em `frontend/src/services/api.js`.

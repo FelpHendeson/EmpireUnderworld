@@ -7,6 +7,7 @@ import {
 } from '../game/modules/skills';
 import { getPrologueModal } from '../game/modules/story';
 import { createRecruitPool } from '../game/modules/recruits';
+import { createInitialNpcNetwork, crimeCatalog } from '../game/modules/criminalEngine';
 
 // Estados de progresso territorial no mapa.
 export const presenceStates = ['Inexistente', 'Infiltrado', 'Disputado', 'Dominado'];
@@ -44,63 +45,78 @@ export const backstoryOptions = [
     id: 'orfao-sobrevivente',
     title: 'Orfao sobrevivente',
     summary: 'Perdeu a familia cedo e aprendeu a sobreviver nas ruas.',
-    statBonus: { health: 18, attack: 1, defense: 2, combatProficiency: 1, speed: 1 },
+    statBonus: {
+      health: 18,
+      attack: 1,
+      defense: 2,
+      combatProficiency: 1,
+      speed: 1,
+      stealth: 2,
+      intelligence: 0,
+      analysis: 2
+    },
     startingSkillIds: ['punch']
   },
   {
     id: 'rebeldia-inata',
     title: 'Rebeldia inata',
     summary: 'Nunca aceitou autoridade e entrou no crime por escolha.',
-    statBonus: { health: 8, attack: 3, defense: 0, combatProficiency: 2, speed: 1 },
+    statBonus: {
+      health: 8,
+      attack: 3,
+      defense: 0,
+      combatProficiency: 2,
+      speed: 1,
+      stealth: 1,
+      intelligence: 1,
+      analysis: 0
+    },
     startingSkillIds: ['punch']
   },
   {
     id: 'filho-da-rua',
     title: 'Filho da rua',
     summary: 'Criado por uma rede informal de rua, com talento social.',
-    statBonus: { health: 12, attack: 1, defense: 1, combatProficiency: 3, speed: 2 },
+    statBonus: {
+      health: 12,
+      attack: 1,
+      defense: 1,
+      combatProficiency: 3,
+      speed: 2,
+      stealth: 2,
+      intelligence: 2,
+      analysis: 1
+    },
     startingSkillIds: ['punch']
   }
 ];
 
 // Catalogo de crimes executaveis pelo jogador.
-export const crimes = [
-  {
-    id: 'furto',
-    name: 'Furto',
-    tier: 1,
-    requirements: {},
-    rewards: { cash: 20, respect: 1, xp: 15 },
-    risk: 0.25
-  },
-  {
-    id: 'pequeno-trafico',
-    name: 'Pequeno Trafico',
-    tier: 1,
-    requirements: {},
-    rewards: { cash: 30, respect: 1, xp: 20 },
-    risk: 0.3
-  },
-  {
-    id: 'assalto-arma',
-    name: 'Assalto a mao armada',
-    tier: 2,
-    requirements: { itemIds: ['arma-fogo'] },
-    rewards: { cash: 80, respect: 2, xp: 35 },
-    risk: 0.45
-  },
-  {
-    id: 'carro-forte',
-    name: 'Assalto a carro forte',
-    tier: 3,
-    requirements: { minRankCounts: { Soldado: 5 } },
-    rewards: { cash: 180, respect: 4, xp: 60 },
-    risk: 0.6
-  }
-];
+export const crimes = crimeCatalog;
 
 // Itens disponiveis no mercado negro e efeitos imediatos.
 export const blackMarketItems = [
+  {
+    id: 'faca',
+    name: 'Faca',
+    type: 'arma-branca',
+    price: 70,
+    effects: { respect: 1 }
+  },
+  {
+    id: 'porrete',
+    name: 'Porrete',
+    type: 'arma-improvisada',
+    price: 45,
+    effects: {}
+  },
+  {
+    id: 'garrafa-quebrada',
+    name: 'Garrafa quebrada',
+    type: 'arma-improvisada',
+    price: 20,
+    effects: {}
+  },
   {
     id: 'arma-fogo',
     name: 'Arma de fogo',
@@ -239,13 +255,18 @@ export const createInitialState = (playerName = 'Jogador', backstoryId = backsto
   const passiveBonuses = computePassiveBonuses(skillLevels);
   const basePlayer = {
     age: 14,
-    health: 90 + selectedBackstory.statBonus.health + passiveBonuses.health,
-    maxHealth: 90 + selectedBackstory.statBonus.health + passiveBonuses.health,
-    attack: 6 + selectedBackstory.statBonus.attack + passiveBonuses.attack,
-    defense: 4 + selectedBackstory.statBonus.defense + passiveBonuses.defense,
-    speed: 3 + selectedBackstory.statBonus.speed + passiveBonuses.speed,
+    health: 90 + (selectedBackstory.statBonus.health ?? 0) + passiveBonuses.health,
+    maxHealth: 90 + (selectedBackstory.statBonus.health ?? 0) + passiveBonuses.health,
+    attack: 6 + (selectedBackstory.statBonus.attack ?? 0) + passiveBonuses.attack,
+    defense: 4 + (selectedBackstory.statBonus.defense ?? 0) + passiveBonuses.defense,
+    speed: 3 + (selectedBackstory.statBonus.speed ?? 0) + passiveBonuses.speed,
     combatProficiency:
-      1 + selectedBackstory.statBonus.combatProficiency + passiveBonuses.combatProficiency,
+      1 +
+      (selectedBackstory.statBonus.combatProficiency ?? 0) +
+      passiveBonuses.combatProficiency,
+    stealth: 4 + (selectedBackstory.statBonus.stealth ?? 0),
+    intelligence: 4 + (selectedBackstory.statBonus.intelligence ?? 0),
+    analysis: 3 + (selectedBackstory.statBonus.analysis ?? 0),
     level: 1,
     xp: 0,
     unspentPoints: 0
@@ -257,7 +278,7 @@ export const createInitialState = (playerName = 'Jogador', backstoryId = backsto
   });
 
   return {
-    stateVersion: 2,
+    stateVersion: 4,
     day: 1,
     resources: {
       cash: 0,
@@ -290,6 +311,7 @@ export const createInitialState = (playerName = 'Jogador', backstoryId = backsto
       }
     ],
     recruitPool: initialRecruitPool,
+    npcNetwork: createInitialNpcNetwork(),
     crimes,
     blackMarket: blackMarketItems,
     objectives: createInitialMissions(),

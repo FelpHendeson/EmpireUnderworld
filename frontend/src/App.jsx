@@ -4,6 +4,7 @@ import {
   BookOpen,
   CalendarDays,
   Check,
+  Dices,
   Info,
   Map,
   ShieldAlert,
@@ -14,13 +15,18 @@ import {
   Users,
   X
 } from 'lucide-react';
-import { backstoryOptions, createInitialState, getNextRank, rankData } from './data/gameData';
+import { backstoryOptions, createInitialState, getNextRank, getRankPower, rankData } from './data/gameData';
+import {
+  getCrimeRequirementStatus,
+  getLocalNpcs,
+  groupCrimesByTier,
+  relationshipLabels
+} from './game/modules/criminalEngine';
 import { authApi, saveApi } from './services/api';
 import {
   AUTO_SAVE_INTERVAL_MS,
   SLOT_IDS,
   TOKEN_STORAGE_KEY,
-  canCommitCrime,
   createInitialSlotDrafts,
   extractSavableState,
   gameReducer,
@@ -52,7 +58,26 @@ const statBonusLabels = {
   attack: 'Ataque',
   defense: 'Defesa',
   combatProficiency: 'Proeza',
-  speed: 'Velocidade'
+  speed: 'Velocidade',
+  stealth: 'Furtividade',
+  intelligence: 'Inteligencia',
+  analysis: 'Analise'
+};
+
+const effectLabels = {
+  cash: 'Cash',
+  influence: 'Influencia',
+  respect: 'Respeito',
+  health: 'Saude',
+  xp: 'XP'
+};
+
+const relationClasses = {
+  ally: 'border-neon-green/40 bg-neon-green/10 text-neon-green',
+  friend: 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue',
+  neutral: 'border-white/15 bg-white/5 text-white/65',
+  rival: 'border-neon-amber/40 bg-neon-amber/10 text-neon-amber',
+  enemy: 'border-red-400/40 bg-red-500/10 text-red-200'
 };
 
 const BackstoryModal = ({ backstories, selectedBackstoryId, onSelect, onClose }) => (
@@ -136,6 +161,138 @@ const BackstoryModal = ({ backstories, selectedBackstoryId, onSelect, onClose })
     </section>
   </div>
 );
+
+const formatEffect = ([key, value]) =>
+  `${effectLabels[key] ?? statBonusLabels[key] ?? key} ${value > 0 ? '+' : ''}${value}`;
+
+const RollSummary = ({ title, check }) => (
+  <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-sm font-semibold text-white">{title}</p>
+      <span className="rounded-lg border border-neon-blue/40 bg-neon-blue/10 px-2 py-1 text-xs text-neon-blue">
+        {check.outcomeLabel}
+      </span>
+    </div>
+    <div className="mt-3 grid gap-2 text-xs text-white/65 sm:grid-cols-4">
+      <span>Dado: d{check.sides} = {check.die}</span>
+      <span>Mult.: x{check.diceMultiplier}</span>
+      <span>Status: {check.statTotal}</span>
+      <span>Total: {check.total}</span>
+    </div>
+    <div className="mt-2 text-xs text-white/50">
+      Min {check.thresholds.minimum} | Medio {check.thresholds.medium} | Max {check.thresholds.maximum}
+    </div>
+    <div className="mt-3 flex flex-wrap gap-2">
+      {check.stats.map((stat) => (
+        <span key={stat.id} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/65">
+          {stat.label} {stat.value} x{stat.weight}
+        </span>
+      ))}
+    </div>
+  </div>
+);
+
+const ActionEventModal = ({ event, onChooseOption, onClose }) => {
+  const canClose = event.phase === 'resolved';
+  const effects = Object.entries(event.result?.effects ?? {}).filter(([, value]) => value);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 text-white backdrop-blur-sm">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="action-event-title"
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-noir-900 p-5 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="flex items-center gap-2 text-xs uppercase tracking-[0.35em] text-neon-amber">
+              <Dices className="h-4 w-4" />
+              Encontro dinamico
+            </p>
+            <h2 id="action-event-title" className="mt-3 text-2xl font-semibold">
+              {event.title}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/65">{event.description}</p>
+          </div>
+          {canClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-white/10 bg-white/5 p-2 text-white/70 transition hover:border-white/30 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-white/40">Local</p>
+            <p className="mt-1 font-semibold">{event.context.location.name}</p>
+            <p className="mt-1 text-xs text-white/55">{event.context.location.description}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-white/40">Quem reagiu</p>
+            <p className="mt-1 font-semibold">{event.context.opponent.name}</p>
+            <p className="mt-1 text-xs text-white/55">{event.context.opponent.description}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-white/40">Pressao</p>
+            <p className="mt-1 font-semibold">Nivel {event.context.location.pressure}</p>
+            <p className="mt-1 text-xs text-white/55">A pressao aumenta a exigencia dos testes.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          <RollSummary title="Teste inicial da acao" check={event.openingCheck} />
+          {event.responseCheck && <RollSummary title="Teste da resposta" check={event.responseCheck} />}
+        </div>
+
+        {effects.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {effects.map(([key, value]) => (
+              <span
+                key={key}
+                className="rounded-lg border border-neon-green/30 bg-neon-green/10 px-2 py-1 text-xs text-neon-green"
+              >
+                {formatEffect([key, value])}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {event.options.length > 0 ? (
+          <div className="mt-6">
+            <p className="text-sm font-semibold">Escolha sua resposta</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {event.options.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => onChooseOption(option.id)}
+                  className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-left transition hover:border-neon-pink/50 hover:bg-neon-pink/10"
+                >
+                  <p className="font-semibold text-white">{option.label}</p>
+                  <p className="mt-1 text-sm text-white/60">{option.description}</p>
+                  <p className="mt-2 text-xs text-white/45">Usa: {option.stats.join(', ')}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-6 w-full rounded-xl border border-neon-blue/40 bg-neon-blue/10 px-4 py-2 text-sm font-semibold text-neon-blue transition hover:bg-neon-blue/20"
+          >
+            Fechar encontro
+          </button>
+        )}
+      </section>
+    </div>
+  );
+};
 
 const AuthScreen = ({ authForm, setAuthForm, handleRegister, handleLogin, apiStatus }) => (
   <div className="relative min-h-screen overflow-hidden bg-black text-white">
@@ -378,6 +535,13 @@ const App = () => {
 
   const activeState = selectedContext.stateItem;
   const activeCity = selectedContext.city;
+
+  const localNpcs = useMemo(
+    () => getLocalNpcs(state.npcNetwork, state.selectedLocation),
+    [state.npcNetwork, state.selectedLocation]
+  );
+
+  const crimeGroups = useMemo(() => groupCrimesByTier(state.crimes), [state.crimes]);
 
   const itemNameMap = useMemo(() => {
     const map = {};
@@ -708,6 +872,9 @@ const App = () => {
               <p>Defesa: {state.player.defense}</p>
               <p>Velocidade: {state.player.speed}</p>
               <p>Proeza: {state.player.combatProficiency}</p>
+              <p>Furtividade: {state.player.stealth}</p>
+              <p>Inteligencia: {state.player.intelligence}</p>
+              <p>Analise: {state.player.analysis}</p>
               <p>XP: {state.player.xp}</p>
               <p>Pontos livres: {state.player.unspentPoints}</p>
             </div>
@@ -768,6 +935,45 @@ const App = () => {
                 className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
               >
                 +Velocidade
+              </button>
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({
+                    type: 'DISTRIBUTE_PLAYER_POINT',
+                    payload: { attribute: 'stealth' }
+                  })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Furtividade
+              </button>
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({
+                    type: 'DISTRIBUTE_PLAYER_POINT',
+                    payload: { attribute: 'intelligence' }
+                  })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Inteligencia
+              </button>
+              <button
+                type="button"
+                disabled={state.player.unspentPoints <= 0}
+                onClick={() =>
+                  dispatch({
+                    type: 'DISTRIBUTE_PLAYER_POINT',
+                    payload: { attribute: 'analysis' }
+                  })
+                }
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs disabled:opacity-40"
+              >
+                +Analise
               </button>
             </div>
 
@@ -899,6 +1105,45 @@ const App = () => {
                 </div>
               </div>
             )}
+
+            <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Personagens locais</p>
+                  <p className="mt-1 text-xs text-white/50">
+                    Contatos, rivais e ameacas mudam o que da para fazer no bairro.
+                  </p>
+                </div>
+                <Users className="h-4 w-4 text-neon-blue" />
+              </div>
+              <div className="mt-3 grid gap-2">
+                {localNpcs.map((npc) => (
+                  <div key={npc.id} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-white">{npc.name}</p>
+                        <p className="text-xs text-white/55">{npc.role}</p>
+                      </div>
+                      <span
+                        className={`rounded-lg border px-2 py-1 text-xs ${
+                          relationClasses[npc.relationship] ?? relationClasses.neutral
+                        }`}
+                      >
+                        {relationshipLabels[npc.relationship] ?? npc.relationship}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-white/55">{npc.note}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(npc.tags ?? []).map((tag) => (
+                        <span key={tag} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/50">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="space-y-6">
@@ -910,28 +1155,59 @@ const App = () => {
             <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Target className="h-4 w-4 text-neon-pink" />
-                Crimes
+                Motor criminal
               </div>
-              <div className="mt-3 grid gap-2">
-                {state.crimes.map((crime) => {
-                  const allowed = canCommitCrime(state, crime);
-                  return (
-                    <button
-                      key={crime.id}
-                      type="button"
-                      disabled={!allowed}
-                      onClick={() =>
-                        dispatch({
-                          type: 'ACTION_COMMIT_CRIME',
-                          payload: { crimeId: crime.id }
-                        })
-                      }
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-xs transition hover:border-neon-pink/40 hover:bg-neon-pink/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {crime.name} (Tier {crime.tier})
-                    </button>
-                  );
-                })}
+              <div className="mt-3 space-y-4">
+                {crimeGroups.map((group) => (
+                  <div key={group.tier} className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold text-white">
+                          {group.label} - {group.title}
+                        </p>
+                        <p className="text-[11px] text-white/45">{group.description}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {group.crimes.map((crime) => {
+                        const status = getCrimeRequirementStatus({
+                          state,
+                          crime,
+                          selectedLocation: state.selectedLocation,
+                          getRankPower
+                        });
+                        const allowed = status.allowed;
+
+                        return (
+                          <button
+                            key={crime.id}
+                            type="button"
+                            disabled={!allowed}
+                            title={
+                              allowed
+                                ? crime.summary
+                                : `Falta: ${status.missing.join(', ')}`
+                            }
+                            onClick={() =>
+                              dispatch({
+                                type: 'ACTION_COMMIT_CRIME',
+                                payload: { crimeId: crime.id }
+                              })
+                            }
+                            className="min-h-16 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left transition hover:border-neon-pink/40 hover:bg-neon-pink/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <span className="block text-xs font-semibold text-white">
+                              {crime.shortName ?? crime.name}
+                            </span>
+                            <span className="mt-1 block text-[11px] leading-relaxed text-white/50">
+                              {allowed ? crime.summary : `Falta: ${status.missing.slice(0, 2).join(', ')}`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1053,6 +1329,16 @@ const App = () => {
             ))}
           </div>
         </section>
+
+        {state.activeEvent && (
+          <ActionEventModal
+            event={state.activeEvent}
+            onChooseOption={(optionId) =>
+              dispatch({ type: 'RESOLVE_ACTIVE_EVENT_OPTION', payload: { optionId } })
+            }
+            onClose={() => dispatch({ type: 'CLOSE_ACTIVE_EVENT' })}
+          />
+        )}
 
         {state.storyModal && (
           <section className="mt-10 rounded-2xl border border-neon-pink/40 bg-neon-pink/10 px-5 py-4">

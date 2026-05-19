@@ -307,7 +307,7 @@ describe('Game routes', () => {
     });
     expect(config.statusCode).toBe(200);
     expect(config.json().saveSlots).toEqual(['slot-1', 'slot-2', 'slot-3']);
-    expect(config.json().stateVersion).toBe(2);
+    expect(config.json().stateVersion).toBe(4);
 
     const leaderboard = await app.inject({
       method: 'GET',

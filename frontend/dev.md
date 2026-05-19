@@ -13,6 +13,8 @@ Fluxo principal:
 - `src/main.jsx`: entrada React.
 - `src/App.jsx`: composicao das telas (`auth`, `saves`, `game`) e orquestracao de sessao.
 - `src/game/reducer.js`: reducer principal e utilitarios de estado/saves.
+- `src/game/modules/actionResolution.js`: rolagens, pesos de status e encontros dinamicos de acoes.
+- `src/game/modules/criminalEngine.js`: catalogo de crimes por tier, requisitos, locais, oposicoes e NPCs locais.
 - `src/game/modules/recruits.js`: geracao e renovacao da fila de candidatos.
 - `src/services/api.js`: cliente HTTP (`authApi`, `saveApi`).
 - `src/data/gameData.js`: catalogos e funcoes de regra (crime, mapa, ranks, estado inicial).
@@ -23,12 +25,16 @@ Estado global guarda:
 - progresso (`day`, `resources`, `activityLog`)
 - mundo (`worldMap`, `selectedLocation`)
 - organizacao (`members`, `recruitPool`, `inventory`)
+- rede local (`npcNetwork`)
+- encontros de acao (`activeEvent`)
 - UI efemera (`combatReport`, `lastTurnSummary`, `uiInfoPanel`)
 
 Acoes principais:
 - `ADVANCE_DAY`: calcula renda territorial e pode renovar o `recruitPool`.
 - `SET_LOCATION`: seleciona estado/cidade/bairro.
-- `ACTION_COMMIT_CRIME`: executa crime com risco e recompensa.
+- `ACTION_COMMIT_CRIME`: inicia teste RPG com dado, pesos de status, faixas min/medio/max e possivel encontro.
+- `RESOLVE_ACTIVE_EVENT_OPTION`: resolve uma resposta do jogador dentro de um encontro dinamico.
+- `CLOSE_ACTIVE_EVENT`: fecha encontro ja resolvido.
 - `ACTION_BUY_ITEM`: compra item e aplica efeitos.
 - `ACTION_RECRUIT`: move candidato do pool para membros ativos.
 - `ACTION_PROMOTE`: sobe patente se requisitos forem atendidos.
@@ -59,12 +65,24 @@ Acoes principais:
 
 ## Regras de jogo (`src/data/gameData.js`)
 - `rankOrder` e `rankData`: progressao de patentes e poder.
-- `crimes`: tabela de risco/recompensa/requisitos.
+- `crimes`: catalogo vindo do motor criminal com tiers, familias, recompensas e requisitos.
+- Atributos de acao incluem `stealth`, `intelligence` e `analysis`, usados em crimes furtivos.
 - `blackMarketItems`: itens e efeitos.
 - `createRecruitPool`: inicia a campanha com candidatos recrutaveis.
 - `worldMap`: hierarquia pais > estado > cidade > bairro.
 - `createInitialState(playerName)`: fabrica estado inicial de campanha.
 - `calculateTerritoryIncome`: renda passiva de bairros `Dominado`.
+
+## Resolucao dinamica de acoes
+- Crimes usam `src/game/modules/actionResolution.js`.
+- O catalogo e requisitos usam `src/game/modules/criminalEngine.js`.
+- Tiers atuais vao de acoes solo ate estrutura regional.
+- Requisitos podem depender de item, patente, respeito, influencia ou NPC local com tag util.
+- Cada bairro possui personagens locais com relacao (`ally`, `friend`, `neutral`, `rival`, `enemy`) e tags que liberam oportunidades.
+- Cada acao rola `d20`, aplica multiplicador por nivel e soma status ponderados.
+- O resultado compara `minimum`, `medium` e `maximum` para definir falha, empate, sucesso ou sucesso critico.
+- No `furto`, falha abre um modal de encontro com local, oponente e respostas possiveis.
+- Respostas tambem usam rolagem e status ponderados, permitindo desdobramentos como lutar, bater e fugir, se soltar e correr ou conversar.
 
 ## Comandos
 - `npm run dev`: servidor Vite.

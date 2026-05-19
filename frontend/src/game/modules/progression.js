@@ -46,5 +46,17 @@ export const distributeAttributePoint = (player, attribute) => {
     nextPlayer.speed += 1;
   }
 
+  if (attribute === 'stealth') {
+    nextPlayer.stealth += 1;
+  }
+
+  if (attribute === 'intelligence') {
+    nextPlayer.intelligence += 1;
+  }
+
+  if (attribute === 'analysis') {
+    nextPlayer.analysis += 1;
+  }
+
   return nextPlayer;
 };

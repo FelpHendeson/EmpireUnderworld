@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { SaveGameModel } from '../models/SaveGame.js';
 
 const SLOT_IDS = ['slot-1', 'slot-2', 'slot-3'];
-const GAME_STATE_VERSION = 2;
+const GAME_STATE_VERSION = 4;
 
 export const gameRoutes: FastifyPluginAsync = async (app) => {
   // Endpoint leve para o frontend descobrir modulos e recursos disponiveis.
@@ -11,7 +11,16 @@ export const gameRoutes: FastifyPluginAsync = async (app) => {
     stateVersion: GAME_STATE_VERSION,
     saveSlots: SLOT_IDS,
     resources: ['cash', 'influence', 'respect'],
-    systems: ['map', 'crime', 'recruitment', 'promotion', 'takeover', 'missions', 'saves']
+    systems: [
+      'map',
+      'crime',
+      'dynamic-actions',
+      'recruitment',
+      'promotion',
+      'takeover',
+      'missions',
+      'saves'
+    ]
   }));
 
   app.get('/game/leaderboard', async (_request, reply) => {

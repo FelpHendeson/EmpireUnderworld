@@ -7,7 +7,8 @@ import {
   getRankPower,
   rankData
 } from '../data/gameData';
-import { resolveCrimeEvent } from './modules/events';
+import { resolveCrimeAttempt, resolveEventResponse } from './modules/actionResolution';
+import { getCrimeRequirementStatus } from './modules/criminalEngine';
 import { applyMissionSystem } from './modules/missions';
 import { applyXpGain, distributeAttributePoint } from './modules/progression';
 import { applySkillUnlocks, getSkillsView } from './modules/skills';
@@ -79,14 +80,50 @@ const countRankOrAbove = (members, rank) => {
   return members.filter((member) => getRankPower(member.rank) >= targetPower).length;
 };
 
-export const canCommitCrime = (state, crime) => {
-  const requiredItems = crime.requirements?.itemIds ?? [];
-  const requiredRanks = crime.requirements?.minRankCounts ?? {};
-  const hasItems = requiredItems.every((itemId) => (state.inventory[itemId] ?? 0) > 0);
-  const hasRanks = Object.entries(requiredRanks).every(([rank, count]) =>
-    countRankOrAbove(state.members, rank) >= count
+const incrementEventCounters = (eventCounters, tags = []) =>
+  tags.reduce(
+    (acc, tag) => ({
+      ...acc,
+      [tag]: (acc[tag] ?? 0) + 1
+    }),
+    eventCounters
   );
-  return hasItems && hasRanks;
+
+const applyPlayerEffects = (state, effects = {}) => {
+  const nextHealth = Math.max(
+    1,
+    Math.min(state.player.maxHealth, state.player.health + (effects.health ?? 0))
+  );
+  const nextPlayer = applyXpGain(
+    {
+      ...state.player,
+      health: nextHealth
+    },
+    effects.xp ?? 0
+  );
+
+  return {
+    player: nextPlayer,
+    members: state.members.map((member, index) =>
+      index === 0
+        ? {
+            ...member,
+            xp: nextPlayer.xp,
+            level: nextPlayer.level
+          }
+        : member
+    )
+  };
+};
+
+export const canCommitCrime = (state, crime) => {
+  const status = getCrimeRequirementStatus({
+    state,
+    crime,
+    selectedLocation: state.selectedLocation,
+    getRankPower
+  });
+  return status.allowed;
 };
 
 const normalizeLoadedState = (payload) => {
@@ -102,6 +139,10 @@ const normalizeLoadedState = (payload) => {
     player: { ...base.player, ...(payload?.player ?? {}) },
     storyFlags: { ...base.storyFlags, ...(payload?.storyFlags ?? {}) },
     members: payload?.members?.length ? payload.members : base.members,
+    npcNetwork:
+      payload?.npcNetwork && typeof payload.npcNetwork === 'object'
+        ? payload.npcNetwork
+        : base.npcNetwork,
     recruitPool: Array.isArray(payload?.recruitPool) ? payload.recruitPool : base.recruitPool,
     objectives: payload?.objectives?.length ? payload.objectives : base.objectives,
     crimeHistory: Array.isArray(payload?.crimeHistory) ? payload.crimeHistory : base.crimeHistory,
@@ -184,6 +225,10 @@ const applyPostActionSystems = (state) => {
     return withSkills;
   }
 
+  if (withSkills.activeEvent) {
+    return withSkills;
+  }
+
   const storyModal = getStoryModalFromState(withSkills);
   if (!storyModal) {
     return withSkills;
@@ -245,48 +290,22 @@ export const gameReducer = (state, action) => {
       if (!crime || !canCommitCrime(state, crime)) {
         return state;
       }
-      const eventResult = resolveCrimeEvent(crime);
-      const success = Math.random() > crime.risk;
-      const baseXp = success ? crime.rewards.xp : Math.round(crime.rewards.xp / 3);
-      const xpGain = baseXp;
-      const nextPlayer = applyXpGain(state.player, xpGain);
-      const updatedMembers = state.members.map((member, index) =>
-        index === 0
-          ? {
-              ...member,
-              xp: nextPlayer.xp,
-              level: nextPlayer.level
-            }
-          : member
+      const attempt = resolveCrimeAttempt({ crime, player: state.player });
+      const success = attempt.outcome === 'success' || attempt.outcome === 'critical';
+      const { player: nextPlayer, members: updatedMembers } = applyPlayerEffects(
+        state,
+        attempt.effects
       );
+      const cashDelta = attempt.effects.cash ?? 0;
+      const respectDelta = attempt.effects.respect ?? 0;
       return applyPostActionSystems({
         ...state,
-        eventCounters: eventResult.eventTags.reduce(
-          (acc, tag) => ({
-            ...acc,
-            [tag]: (acc[tag] ?? 0) + 1
-          }),
-          state.eventCounters
-        ),
+        eventCounters: incrementEventCounters(state.eventCounters, attempt.eventTags),
         members: updatedMembers,
-        resources: applyResourceDelta(
-          state.resources,
-          success
-            ? {
-                ...crime.rewards,
-                cash: (crime.rewards.cash ?? 0) + (eventResult.effects.cash ?? 0),
-                respect: (crime.rewards.respect ?? 0) + (eventResult.effects.respect ?? 0)
-              }
-            : { respect: -1 + (eventResult.effects.respect ?? 0), cash: eventResult.effects.cash ?? 0 }
-        ),
-        combatReport: eventResult.type === 'combat' ? eventResult.text : state.combatReport,
-        player: {
-          ...nextPlayer,
-          health: Math.max(
-            1,
-            Math.min(nextPlayer.maxHealth, nextPlayer.health + (eventResult.effects.health ?? 0))
-          )
-        },
+        resources: applyResourceDelta(state.resources, attempt.effects),
+        combatReport: null,
+        activeEvent: attempt.event,
+        player: nextPlayer,
         crimeHistory: [
           {
             id: nanoid(),
@@ -294,29 +313,58 @@ export const gameReducer = (state, action) => {
             crimeName: crime.name,
             success,
             day: state.day,
-            xpGain,
-            cashDelta: success
-              ? (crime.rewards.cash ?? 0) + (eventResult.effects.cash ?? 0)
-              : eventResult.effects.cash ?? 0,
-            respectDelta: success
-              ? (crime.rewards.respect ?? 0) + (eventResult.effects.respect ?? 0)
-              : -1 + (eventResult.effects.respect ?? 0),
-            eventType: eventResult.type
+            xpGain: attempt.effects.xp ?? 0,
+            cashDelta,
+            respectDelta,
+            eventType: attempt.historyType,
+            rollTotal: attempt.event.openingCheck.total,
+            rollOutcome: attempt.outcome
           },
           ...state.crimeHistory
         ].slice(0, 500),
-        activityLog: [
-          eventResult.text,
-          success
-            ? `Crime realizado: ${crime.name}. O caixa aumentou.`
-            : `Crime falhou: ${crime.name}. A policia ficou alerta.`,
-          ...state.activityLog
-        ].slice(0, 20)
+        activityLog: [attempt.log, ...state.activityLog].slice(0, 20)
+      });
+    }
+    case 'RESOLVE_ACTIVE_EVENT_OPTION': {
+      if (!state.activeEvent || state.activeEvent.phase === 'resolved') {
+        return state;
+      }
+      const resolution = resolveEventResponse({
+        event: state.activeEvent,
+        optionId: action.payload.optionId,
+        player: state.player
+      });
+      if (!resolution) {
+        return state;
+      }
+      const { player: nextPlayer, members: updatedMembers } = applyPlayerEffects(
+        state,
+        resolution.effects
+      );
+
+      return applyPostActionSystems({
+        ...state,
+        members: updatedMembers,
+        resources: applyResourceDelta(state.resources, resolution.effects),
+        player: nextPlayer,
+        activeEvent: resolution.event,
+        activityLog: [resolution.log, ...state.activityLog].slice(0, 20)
       });
     }
     case 'DISTRIBUTE_PLAYER_POINT': {
       const { attribute } = action.payload;
-      if (!['health', 'attack', 'defense', 'combatProficiency', 'speed'].includes(attribute)) {
+      if (
+        ![
+          'health',
+          'attack',
+          'defense',
+          'combatProficiency',
+          'speed',
+          'stealth',
+          'intelligence',
+          'analysis'
+        ].includes(attribute)
+      ) {
         return state;
       }
       const nextPlayer = distributeAttributePoint(state.player, attribute);
@@ -490,6 +538,16 @@ export const gameReducer = (state, action) => {
             ? [...(state.seenStoryEntries ?? []), modalId]
             : state.seenStoryEntries,
         storyModal: null
+      };
+    }
+    case 'CLOSE_ACTIVE_EVENT': {
+      if (state.activeEvent?.phase !== 'resolved') {
+        return state;
+      }
+
+      return {
+        ...state,
+        activeEvent: null
       };
     }
     default:

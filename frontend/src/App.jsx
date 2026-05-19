@@ -10,7 +10,6 @@ import {
   Home,
   Info,
   LayoutDashboard,
-  Map,
   MapPinned,
   MessageCircle,
   ShieldAlert,
@@ -673,6 +672,295 @@ const DomainPanel = ({ state, selectedNeighborhood, upgradeStatus, onUpgrade }) 
   );
 };
 
+const presenceMeta = {
+  Inexistente: {
+    label: 'Sem presenca',
+    control: 6,
+    className: 'border-white/10 bg-white/[0.03] text-white/55',
+    dotClassName: 'bg-white/35',
+    barClassName: 'bg-white/35',
+    caption: 'Sem ponto fixo'
+  },
+  Infiltrado: {
+    label: 'Infiltrado',
+    control: 35,
+    className: 'border-neon-blue/35 bg-neon-blue/10 text-neon-blue',
+    dotClassName: 'bg-neon-blue',
+    barClassName: 'bg-neon-blue',
+    caption: 'Contato ativo'
+  },
+  Disputado: {
+    label: 'Disputado',
+    control: 68,
+    className: 'border-neon-amber/45 bg-neon-amber/10 text-neon-amber',
+    dotClassName: 'bg-neon-amber',
+    barClassName: 'bg-neon-amber',
+    caption: 'Zona quente'
+  },
+  Dominado: {
+    label: 'Dominado',
+    control: 100,
+    className: 'border-neon-green/45 bg-neon-green/10 text-neon-green',
+    dotClassName: 'bg-neon-green',
+    barClassName: 'bg-neon-green',
+    caption: 'Controle firme'
+  }
+};
+
+const getPresenceMeta = (presence) => presenceMeta[presence] ?? presenceMeta.Inexistente;
+
+const getThreatLabel = (powerLevel) => {
+  if (powerLevel >= 8) {
+    return 'Alta';
+  }
+  if (powerLevel >= 6) {
+    return 'Media';
+  }
+  return 'Baixa';
+};
+
+const getCityIntel = (city) => {
+  const neighborhoods = city?.neighborhoods ?? [];
+  const dominated = neighborhoods.filter((neighborhood) => neighborhood.presence === 'Dominado').length;
+  const disputed = neighborhoods.filter((neighborhood) => neighborhood.presence === 'Disputado').length;
+  const avgThreat = neighborhoods.length
+    ? Math.round(
+        neighborhoods.reduce((sum, neighborhood) => sum + neighborhood.dominantOrg.powerLevel, 0) /
+          neighborhoods.length
+      )
+    : 0;
+
+  return {
+    total: neighborhoods.length,
+    dominated,
+    disputed,
+    avgThreat
+  };
+};
+
+const TerritoryNode = ({ neighborhood, selected, index, onSelect }) => {
+  const meta = getPresenceMeta(neighborhood.presence);
+  const threatWidth = Math.min(100, Math.max(10, neighborhood.dominantOrg.powerLevel * 10));
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`group relative min-h-40 overflow-hidden rounded-2xl border px-4 py-4 text-left transition ${
+        selected
+          ? 'border-neon-pink/70 bg-neon-pink/10 shadow-[0_0_28px_rgba(255,45,149,0.18)]'
+          : 'border-white/10 bg-black/25 hover:border-neon-blue/45 hover:bg-neon-blue/10'
+      }`}
+    >
+      <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full border border-white/10 opacity-30" />
+      <div className="absolute bottom-3 right-3 text-5xl font-black text-white/[0.03]">
+        {String(index + 1).padStart(2, '0')}
+      </div>
+
+      <div className="relative flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.25em] text-white/35">Setor {index + 1}</p>
+          <h3 className="mt-1 text-lg font-semibold text-white">{neighborhood.name}</h3>
+        </div>
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] ${meta.className}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClassName}`} />
+          {meta.label}
+        </span>
+      </div>
+
+      <div className="relative mt-5 space-y-3">
+        <div>
+          <div className="flex items-center justify-between text-[11px] text-white/45">
+            <span>Controle</span>
+            <span>{meta.control}%</span>
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className={`h-full rounded-full ${meta.barClassName}`} style={{ width: `${meta.control}%` }} />
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between text-[11px] text-white/45">
+            <span>Ameaca rival</span>
+            <span>{getThreatLabel(neighborhood.dominantOrg.powerLevel)}</span>
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-red-400/70" style={{ width: `${threatWidth}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="relative mt-4 flex items-center justify-between gap-2 text-xs">
+        <span className="text-white/55">{neighborhood.dominantOrg.name}</span>
+        <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-white/60">
+          PWR {neighborhood.dominantOrg.powerLevel}
+        </span>
+      </div>
+    </button>
+  );
+};
+
+const TerritoryCommandPanel = ({ neighborhood, onTakeover }) => {
+  if (!neighborhood) {
+    return null;
+  }
+
+  const meta = getPresenceMeta(neighborhood.presence);
+  const threatWidth = Math.min(100, Math.max(10, neighborhood.dominantOrg.powerLevel * 10));
+
+  return (
+    <section className="rounded-2xl border border-neon-pink/30 bg-neon-pink/10 px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-neon-pink">Alvo selecionado</p>
+          <h3 className="mt-2 text-2xl font-semibold text-white">{neighborhood.name}</h3>
+          <p className="mt-1 text-sm text-white/60">Dominante: {neighborhood.dominantOrg.name}</p>
+        </div>
+        <span className={`rounded-xl border px-3 py-2 text-xs font-semibold ${meta.className}`}>
+          {meta.caption}
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">Presenca</p>
+          <p className="mt-2 text-sm font-semibold text-white">{neighborhood.presence}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">Power inimigo</p>
+          <p className="mt-2 text-sm font-semibold text-white">{neighborhood.dominantOrg.powerLevel}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">Elite local</p>
+          <p className="mt-2 text-sm font-semibold text-white">{neighborhood.dominantOrg.eliteCount}</p>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between text-xs text-white/50">
+          <span>Pressao rival</span>
+          <span>{getThreatLabel(neighborhood.dominantOrg.powerLevel)}</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-red-400/80" style={{ width: `${threatWidth}%` }} />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onTakeover}
+        className="mt-5 w-full rounded-xl border border-neon-blue/40 bg-neon-blue/10 px-4 py-3 text-sm font-semibold text-neon-blue transition hover:bg-neon-blue/20"
+      >
+        Disputar territorio
+      </button>
+    </section>
+  );
+};
+
+const TacticalMapPanel = ({
+  state,
+  activeState,
+  activeCity,
+  selectedNeighborhood,
+  selectedLocation,
+  onSelectState,
+  onSelectNeighborhood,
+  onTakeover,
+  onOpenInfo
+}) => {
+  const intel = getCityIntel(activeCity);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl border border-neon-blue/35 bg-neon-blue/10 p-3 text-neon-blue">
+            <MapPinned className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Mapa tatico</h2>
+            <p className="mt-1 text-xs text-white/50">
+              Escolha uma regiao, leia a ameaca e avance controle por bairro.
+            </p>
+          </div>
+        </div>
+        <InfoButton onClick={onOpenInfo} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {state.worldMap[0].states.map((stateItem) => (
+          <button
+            key={stateItem.id}
+            type="button"
+            onClick={() => onSelectState(stateItem)}
+            className={`rounded-2xl border px-4 py-3 text-left transition ${
+              activeState?.id === stateItem.id
+                ? 'border-neon-blue/60 bg-neon-blue/10'
+                : 'border-white/10 bg-noir-900/70 hover:border-white/30'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">{stateItem.name}</p>
+                <p className="mt-1 text-xs text-white/50">{stateItem.cities.length} cidade(s)</p>
+              </div>
+              <span className="rounded-lg border border-white/10 bg-black/25 px-2 py-1 text-[11px] text-white/50">
+                {stateItem.id.toUpperCase()}
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <section className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_20%_20%,rgba(34,211,238,0.12),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] px-4 py-4">
+        <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+          <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-white/35">Operacao urbana</p>
+                <h3 className="mt-2 text-2xl font-semibold">{activeCity?.name ?? 'Sem cidade'}</h3>
+                <p className="mt-1 text-sm text-white/50">
+                  {activeState?.name ?? 'Sem estado'} / {selectedLocation.neighborhoodId}
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+                  <p className="text-white/35">Bairros</p>
+                  <p className="mt-1 font-semibold text-white">{intel.total}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+                  <p className="text-white/35">Dominados</p>
+                  <p className="mt-1 font-semibold text-neon-green">{intel.dominated}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+                  <p className="text-white/35">Ameaca</p>
+                  <p className="mt-1 font-semibold text-neon-amber">{intel.avgThreat}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {(activeCity?.neighborhoods ?? []).map((neighborhood, index) => (
+                <TerritoryNode
+                  key={neighborhood.id}
+                  neighborhood={neighborhood}
+                  index={index}
+                  selected={selectedNeighborhood?.id === neighborhood.id}
+                  onSelect={() => onSelectNeighborhood(neighborhood)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <TerritoryCommandPanel neighborhood={selectedNeighborhood} onTakeover={onTakeover} />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
 const AuthScreen = ({ authForm, setAuthForm, handleRegister, handleLogin, apiStatus }) => (
   <div className="relative min-h-screen overflow-hidden bg-black text-white">
     <div className="absolute inset-0 bg-gradient-to-br from-black via-noir-950 to-black" />
@@ -1209,7 +1497,7 @@ const App = () => {
   }
 
   return (
-    <div className="min-h-screen bg-noir-950 text-white">
+    <div className="min-h-screen bg-noir-950 pb-24 text-white md:pb-0">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <header className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1448,96 +1736,51 @@ const App = () => {
         <section className="mt-8">
           {gameTab === 'mapa' && (
           <div className="space-y-6">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold">Mapa geopolitico</h2>
-              <InfoButton onClick={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'map' } })} />
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              {state.worldMap[0].states.map((stateItem) => (
-                <button
-                  key={stateItem.id}
-                  type="button"
-                  onClick={() =>
-                    dispatch({
-                      type: 'SET_LOCATION',
-                      payload: {
-                        countryId: 'br',
-                        stateId: stateItem.id,
-                        cityId: stateItem.cities[0].id,
-                        neighborhoodId: stateItem.cities[0].neighborhoods[0].id
-                      }
-                    })
-                  }
-                  className={`rounded-2xl border px-4 py-3 text-left transition ${
-                    activeState?.id === stateItem.id
-                      ? 'border-neon-blue/60 bg-neon-blue/10'
-                      : 'border-white/10 bg-noir-900/70 hover:border-white/30'
-                  }`}
-                >
-                  <p className="text-sm font-semibold">{stateItem.name}</p>
-                  <p className="text-xs text-white/60">{stateItem.cities.length} cidades</p>
-                </button>
-              ))}
-            </div>
-
-            {activeCity && (
-              <div className="grid gap-3 md:grid-cols-2">
-                {activeCity.neighborhoods.map((neighborhood) => (
-                  <button
-                    key={neighborhood.id}
-                    type="button"
-                    onClick={() =>
-                      dispatch({
-                        type: 'SET_LOCATION',
-                        payload: {
-                          countryId: 'br',
-                          stateId: activeState.id,
-                          cityId: activeCity.id,
-                          neighborhoodId: neighborhood.id
-                        }
-                      })
-                    }
-                    className={`rounded-2xl border px-4 py-3 text-left transition ${
-                      selectedContext.neighborhood?.id === neighborhood.id
-                        ? 'border-neon-pink/60 bg-neon-pink/10'
-                        : 'border-white/10 bg-noir-900/70 hover:border-white/30'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold">{neighborhood.name}</p>
-                      <Map className="h-4 w-4 text-neon-blue" />
-                    </div>
-                    <p className="mt-2 text-xs text-white/60">Dominante: {neighborhood.dominantOrg.name}</p>
-                    <p className="mt-1 text-xs text-neon-pink">Presenca: {neighborhood.presence}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {selectedContext.neighborhood && (
-              <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4 text-sm text-white/70">
-                Bairro selecionado: <span className="text-white">{selectedContext.neighborhood.name}</span>. Dominante: {selectedContext.neighborhood.dominantOrg.name}.
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: 'ACTION_TAKEOVER' })}
-                    className="rounded-xl border border-neon-blue/40 bg-neon-blue/10 px-4 py-2 text-xs font-semibold text-neon-blue transition hover:bg-neon-blue/20"
-                  >
-                    Disputar territorio
-                  </button>
-                  <span className="text-xs text-white/50">Power inimigo: {selectedContext.neighborhood.dominantOrg.powerLevel}</span>
-                </div>
-              </div>
-            )}
-
-            <DomainPanel
+            <TacticalMapPanel
               state={state}
+              activeState={activeState}
+              activeCity={activeCity}
               selectedNeighborhood={selectedContext.neighborhood}
-              upgradeStatus={domainUpgradeStatus}
-              onUpgrade={() => dispatch({ type: 'UPGRADE_DOMAIN' })}
+              selectedLocation={state.selectedLocation}
+              onSelectState={(stateItem) =>
+                dispatch({
+                  type: 'SET_LOCATION',
+                  payload: {
+                    countryId: 'br',
+                    stateId: stateItem.id,
+                    cityId: stateItem.cities[0].id,
+                    neighborhoodId: stateItem.cities[0].neighborhoods[0].id
+                  }
+                })
+              }
+              onSelectNeighborhood={(neighborhood) => {
+                if (!activeState || !activeCity) {
+                  return;
+                }
+
+                dispatch({
+                  type: 'SET_LOCATION',
+                  payload: {
+                    countryId: 'br',
+                    stateId: activeState.id,
+                    cityId: activeCity.id,
+                    neighborhoodId: neighborhood.id
+                  }
+                });
+              }}
+              onTakeover={() => dispatch({ type: 'ACTION_TAKEOVER' })}
+              onOpenInfo={() => dispatch({ type: 'TOGGLE_INFO', payload: { panel: 'map' } })}
             />
 
-            <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
+            <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+              <DomainPanel
+                state={state}
+                selectedNeighborhood={selectedContext.neighborhood}
+                upgradeStatus={domainUpgradeStatus}
+                onUpgrade={() => dispatch({ type: 'UPGRADE_DOMAIN' })}
+              />
+
+              <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold">Personagens locais</p>
@@ -1621,6 +1864,7 @@ const App = () => {
                     onSendPrompt={handleNpcPrompt}
                   />
                 )}
+              </div>
               </div>
             </div>
           </div>

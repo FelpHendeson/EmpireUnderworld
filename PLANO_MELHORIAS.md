@@ -212,6 +212,7 @@ Criterio de aceite:
 
 Acoes:
 - Organizar a tela principal em abas de jogo para reduzir scroll e bagunca visual.
+- Dar ao mapa uma leitura mais parecida com jogo: setores, controle, ameaca e painel de alvo.
 - Transformar a timeline em painel com filtros, contadores e leitura em modal.
 - Separar NPCs locais em rede e conversas, com interacao semi-estatica.
 - Criar progressao de dominio por local: casa, base e area.
@@ -308,6 +309,7 @@ Criterio de aceite:
 - [x] Conversas semi-estaticas com NPCs locais.
 - [x] Progressao casa/base/area criada.
 - [x] Navegacao interna por abas no jogo.
+- [x] Mapa tatico com setores, controle e ameaca.
 - [ ] Deploy documentado.
 
 ## Metricas de saude

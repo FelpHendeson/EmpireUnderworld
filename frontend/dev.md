@@ -84,6 +84,7 @@ Acoes principais:
 - Upgrade de dominio consome recursos e registra evento na timeline.
 - A tela de jogo usa abas `Visao`, `Mapa`, `Acoes`, `Equipe` e `Historico`.
 - Em mobile, as abas aparecem como navegacao inferior fixa para reduzir scroll e aproximar a experiencia de app.
+- A aba `Mapa` usa visual tatico: regioes, setores de bairro, barras de controle, ameaca rival e painel de alvo.
 
 ## Resolucao dinamica de acoes
 - Crimes usam `src/game/modules/actionResolution.js`.

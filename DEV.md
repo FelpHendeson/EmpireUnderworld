@@ -32,6 +32,7 @@ Melhoria recente de design de gameplay:
 - o sistema de acoes criminais usa rolagens tipo RPG com `d20`, pesos de status, faixas min/medio/max e encontros dinamicos em `activeEvent`.
 - o motor criminal organiza crimes por tier, requisitos de itens/NPCs/patentes e rede local de personagens por bairro.
 - a tela principal foi reorganizada em abas de app: visao, mapa, acoes, equipe e historico, com navegacao inferior no mobile.
+- a aba de mapa usa uma leitura tatica por setores, com controle, ameaca rival e painel de alvo selecionado.
 - a linha do tempo virou um painel filtravel com contadores por categoria e modal de detalhe para reduzir ruido visual.
 - NPCs locais agora possuem aba de conversas semi-estaticas, separada da lista de rede local.
 - o mapa ganhou progressao de dominio: `casa` para turma pequena, `base` para quadrilha em crescimento e `area` para presenca consolidada.

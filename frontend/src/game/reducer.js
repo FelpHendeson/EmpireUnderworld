@@ -116,6 +116,93 @@ const applyPlayerEffects = (state, effects = {}) => {
   };
 };
 
+export const getDomainStageView = (domain) => {
+  if (domain.stage === 'area') {
+    return {
+      label: 'Area',
+      title: 'Area controlada',
+      description: 'A organizacao ja projeta presenca sobre o bairro.',
+      nextLabel: null
+    };
+  }
+
+  if (domain.stage === 'base') {
+    return {
+      label: 'Base',
+      title: 'Base da quadrilha',
+      description: 'A casa virou ponto de encontro, estoque e planejamento.',
+      nextLabel: 'Area'
+    };
+  }
+
+  return {
+    label: 'Casa',
+    title: 'Casa segura',
+    description: 'Um ponto pequeno para voce e sua turma respirarem e planejarem.',
+    nextLabel: 'Base'
+  };
+};
+
+const getDomainUpgrade = (state) => {
+  const domain = state.domain ?? {};
+
+  if (domain.stage === 'casa') {
+    return {
+      nextStage: 'base',
+      label: 'Transformar em base',
+      requirements: {
+        cash: 160,
+        respect: 3,
+        members: 3
+      }
+    };
+  }
+
+  if (domain.stage === 'base') {
+    return {
+      nextStage: 'area',
+      label: 'Consolidar area',
+      requirements: {
+        cash: 420,
+        influence: 3,
+        respect: 8,
+        members: 6
+      }
+    };
+  }
+
+  return null;
+};
+
+export const getDomainUpgradeStatus = (state) => {
+  const upgrade = getDomainUpgrade(state);
+  if (!upgrade) {
+    return { available: false, upgrade: null, missing: [] };
+  }
+
+  const missing = [];
+  const requirements = upgrade.requirements;
+
+  if ((requirements.cash ?? 0) > state.resources.cash) {
+    missing.push(`$${requirements.cash}`);
+  }
+  if ((requirements.respect ?? 0) > state.resources.respect) {
+    missing.push(`${requirements.respect} respeito`);
+  }
+  if ((requirements.influence ?? 0) > state.resources.influence) {
+    missing.push(`${requirements.influence} influencia`);
+  }
+  if ((requirements.members ?? 0) > state.members.length) {
+    missing.push(`${requirements.members} membros`);
+  }
+
+  return {
+    available: missing.length === 0,
+    upgrade,
+    missing
+  };
+};
+
 export const canCommitCrime = (state, crime) => {
   const status = getCrimeRequirementStatus({
     state,
@@ -136,6 +223,7 @@ const normalizeLoadedState = (payload) => {
     ...payload,
     resources: { ...base.resources, ...(payload?.resources ?? {}) },
     selectedLocation: { ...base.selectedLocation, ...(payload?.selectedLocation ?? {}) },
+    domain: { ...base.domain, ...(payload?.domain ?? {}) },
     player: { ...base.player, ...(payload?.player ?? {}) },
     storyFlags: { ...base.storyFlags, ...(payload?.storyFlags ?? {}) },
     members: payload?.members?.length ? payload.members : base.members,
@@ -518,6 +606,41 @@ export const gameReducer = (state, action) => {
             : `A tentativa em ${selectedNeighborhood.name} fracassou.`,
           ...state.activityLog
         ].slice(0, 12)
+      };
+    }
+    case 'UPGRADE_DOMAIN': {
+      const status = getDomainUpgradeStatus(state);
+      if (!status.available || !status.upgrade) {
+        return state;
+      }
+
+      const nextStage = status.upgrade.nextStage;
+      const nextDomain = {
+        ...state.domain,
+        stage: nextStage,
+        level: state.domain.level + 1,
+        neighborhoodId: state.selectedLocation.neighborhoodId,
+        name:
+          nextStage === 'area'
+            ? `Area ${state.selectedLocation.neighborhoodId}`
+            : `Base ${state.selectedLocation.neighborhoodId}`,
+        security: state.domain.security + 1,
+        logistics: state.domain.logistics + 1,
+        influence: state.domain.influence + (nextStage === 'area' ? 2 : 1)
+      };
+
+      return {
+        ...state,
+        domain: nextDomain,
+        resources: applyResourceDelta(state.resources, {
+          cash: -status.upgrade.requirements.cash,
+          respect: -(status.upgrade.requirements.respect ?? 0),
+          influence: -(status.upgrade.requirements.influence ?? 0)
+        }),
+        activityLog: [
+          `${getDomainStageView(nextDomain).label} estabelecida em ${state.selectedLocation.neighborhoodId}.`,
+          ...state.activityLog
+        ].slice(0, 20)
       };
     }
     case 'TOGGLE_INFO': {

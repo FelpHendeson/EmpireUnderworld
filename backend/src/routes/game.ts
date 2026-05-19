@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { SaveGameModel } from '../models/SaveGame.js';
 
 const SLOT_IDS = ['slot-1', 'slot-2', 'slot-3'];
-const GAME_STATE_VERSION = 4;
+const GAME_STATE_VERSION = 5;
 
 export const gameRoutes: FastifyPluginAsync = async (app) => {
   // Endpoint leve para o frontend descobrir modulos e recursos disponiveis.

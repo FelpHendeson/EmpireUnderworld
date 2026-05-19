@@ -208,7 +208,19 @@ Acoes:
 Criterio de aceite:
 - Eventos afetam decisoes de gameplay, nao apenas texto.
 
-### 15. Melhorar ranking
+### 15. Melhorar mapa, timeline e NPCs
+
+Acoes:
+- Organizar a tela principal em abas de jogo para reduzir scroll e bagunca visual.
+- Transformar a timeline em painel com filtros, contadores e leitura em modal.
+- Separar NPCs locais em rede e conversas, com interacao semi-estatica.
+- Criar progressao de dominio por local: casa, base e area.
+- Ligar upgrades de dominio a recursos, membros e reputacao.
+
+Criterio de aceite:
+- Jogador entende melhor o historico recente, conversa com contatos locais e percebe crescimento territorial.
+
+### 16. Melhorar ranking
 
 Acoes:
 - Definir criterio oficial: cash, respeito, dia, territorios ou score composto.
@@ -220,7 +232,7 @@ Criterio de aceite:
 
 ## Prioridade 5 - Operacao e deploy
 
-### 16. Configurar ambientes
+### 17. Configurar ambientes
 
 Acoes:
 - Separar `.env.example` por desenvolvimento, teste e producao.
@@ -230,7 +242,7 @@ Acoes:
 Criterio de aceite:
 - Setup novo fica reproduzivel sem conhecimento tribal.
 
-### 17. Preparar deploy
+### 18. Preparar deploy
 
 Acoes:
 - Definir plataforma de frontend e backend.
@@ -275,6 +287,7 @@ Criterio de aceite:
 
 - Balancear economia.
 - Expandir eventos.
+- Melhorar mapa, timeline e NPCs.
 - Melhorar ranking.
 - Criar novos objetivos/missoes.
 
@@ -291,6 +304,10 @@ Criterio de aceite:
 - [ ] Confirmacao para apagar save.
 - [ ] Migracao de saves por `stateVersion`.
 - [x] Comando `verify` criado.
+- [x] Timeline com filtros e modal de detalhe.
+- [x] Conversas semi-estaticas com NPCs locais.
+- [x] Progressao casa/base/area criada.
+- [x] Navegacao interna por abas no jogo.
 - [ ] Deploy documentado.
 
 ## Metricas de saude

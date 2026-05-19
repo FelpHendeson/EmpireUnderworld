@@ -6,7 +6,7 @@ Frontend em `React + Vite + Tailwind` com estado principal via `useReducer`.
 Fluxo principal:
 1. Tela `auth` (registro/login).
 2. Tela `saves` (3 slots por usuario).
-3. Tela `game` (loop de jogo).
+3. Tela `game` (loop de jogo com abas internas).
 4. Salvamento manual e auto-save em nuvem via API do backend.
 
 ## Estrutura
@@ -24,6 +24,7 @@ Fluxo principal:
 Estado global guarda:
 - progresso (`day`, `resources`, `activityLog`)
 - mundo (`worldMap`, `selectedLocation`)
+- dominio local (`domain`)
 - organizacao (`members`, `recruitPool`, `inventory`)
 - rede local (`npcNetwork`)
 - encontros de acao (`activeEvent`)
@@ -35,6 +36,7 @@ Acoes principais:
 - `ACTION_COMMIT_CRIME`: inicia teste RPG com dado, pesos de status, faixas min/medio/max e possivel encontro.
 - `RESOLVE_ACTIVE_EVENT_OPTION`: resolve uma resposta do jogador dentro de um encontro dinamico.
 - `CLOSE_ACTIVE_EVENT`: fecha encontro ja resolvido.
+- `UPGRADE_DOMAIN`: evolui casa para base e base para area quando requisitos forem atendidos.
 - `ACTION_BUY_ITEM`: compra item e aplica efeitos.
 - `ACTION_RECRUIT`: move candidato do pool para membros ativos.
 - `ACTION_PROMOTE`: sobe patente se requisitos forem atendidos.
@@ -67,11 +69,21 @@ Acoes principais:
 - `rankOrder` e `rankData`: progressao de patentes e poder.
 - `crimes`: catalogo vindo do motor criminal com tiers, familias, recompensas e requisitos.
 - Atributos de acao incluem `stealth`, `intelligence` e `analysis`, usados em crimes furtivos.
+- `domain`: representa o ponto atual do jogador no mapa (`casa`, `base` ou `area`).
 - `blackMarketItems`: itens e efeitos.
 - `createRecruitPool`: inicia a campanha com candidatos recrutaveis.
 - `worldMap`: hierarquia pais > estado > cidade > bairro.
 - `createInitialState(playerName)`: fabrica estado inicial de campanha.
 - `calculateTerritoryIncome`: renda passiva de bairros `Dominado`.
+
+## UI de mapa, timeline e NPCs
+- Linha do tempo usa categorias inferidas do texto do log: crimes, mapa, pessoas e sistema.
+- Cada item da timeline pode abrir um modal com leitura isolada do evento.
+- O painel de NPCs tem abas `Rede` e `Conversas`; conversas sao semi-estaticas e ficam em estado local da UI.
+- O painel de dominio mostra casa/base/area, atributos de seguranca/logistica/influencia e botao de upgrade.
+- Upgrade de dominio consome recursos e registra evento na timeline.
+- A tela de jogo usa abas `Visao`, `Mapa`, `Acoes`, `Equipe` e `Historico`.
+- Em mobile, as abas aparecem como navegacao inferior fixa para reduzir scroll e aproximar a experiencia de app.
 
 ## Resolucao dinamica de acoes
 - Crimes usam `src/game/modules/actionResolution.js`.

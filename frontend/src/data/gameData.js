@@ -278,7 +278,7 @@ export const createInitialState = (playerName = 'Jogador', backstoryId = backsto
   });
 
   return {
-    stateVersion: 4,
+    stateVersion: 5,
     day: 1,
     resources: {
       cash: 0,
@@ -299,6 +299,15 @@ export const createInitialState = (playerName = 'Jogador', backstoryId = backsto
       stateId: mapWithPresence[0].states[0].id,
       cityId: mapWithPresence[0].states[0].cities[0].id,
       neighborhoodId: firstNeighborhood.id
+    },
+    domain: {
+      stage: 'casa',
+      level: 1,
+      neighborhoodId: firstNeighborhood.id,
+      name: `Casa de ${normalizedPlayerName}`,
+      security: 1,
+      logistics: 1,
+      influence: 0
     },
     inventory: {},
     members: [

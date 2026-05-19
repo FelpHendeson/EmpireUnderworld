@@ -2,13 +2,20 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   BadgeDollarSign,
   BookOpen,
+  Building2,
   CalendarDays,
   Check,
   Dices,
+  Filter,
+  Home,
   Info,
+  LayoutDashboard,
   Map,
+  MapPinned,
+  MessageCircle,
   ShieldAlert,
   ShoppingBag,
+  ScrollText,
   Swords,
   Target,
   UserPlus,
@@ -30,6 +37,8 @@ import {
   createInitialSlotDrafts,
   extractSavableState,
   gameReducer,
+  getDomainStageView,
+  getDomainUpgradeStatus,
   infoContent
 } from './game/reducer';
 
@@ -79,6 +88,66 @@ const relationClasses = {
   rival: 'border-neon-amber/40 bg-neon-amber/10 text-neon-amber',
   enemy: 'border-red-400/40 bg-red-500/10 text-red-200'
 };
+
+const gameTabs = [
+  { id: 'visao', label: 'Visao', icon: LayoutDashboard },
+  { id: 'mapa', label: 'Mapa', icon: MapPinned },
+  { id: 'acoes', label: 'Acoes', icon: Target },
+  { id: 'equipe', label: 'Equipe', icon: Users },
+  { id: 'historico', label: 'Historico', icon: ScrollText }
+];
+
+const GameNavigation = ({ activeTab, onChange }) => (
+  <>
+    <nav className="mt-6 hidden rounded-2xl border border-white/10 bg-noir-900/70 p-2 md:flex">
+      {gameTabs.map((tab) => {
+        const Icon = tab.icon;
+        const active = activeTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            aria-current={active ? 'page' : undefined}
+            onClick={() => onChange(tab.id)}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition ${
+              active
+                ? 'bg-neon-blue/15 text-neon-blue'
+                : 'text-white/55 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {tab.label}
+          </button>
+        );
+      })}
+    </nav>
+
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-noir-950/95 px-2 py-2 backdrop-blur md:hidden">
+      <div className="mx-auto grid max-w-xl grid-cols-5 gap-1">
+        {gameTabs.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              aria-current={active ? 'page' : undefined}
+              onClick={() => onChange(tab.id)}
+              className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold transition ${
+                active
+                  ? 'bg-neon-pink/15 text-neon-pink'
+                  : 'text-white/50 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  </>
+);
 
 const BackstoryModal = ({ backstories, selectedBackstoryId, onSelect, onClose }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 text-white backdrop-blur-sm">
@@ -294,6 +363,316 @@ const ActionEventModal = ({ event, onChooseOption, onClose }) => {
   );
 };
 
+const timelineFilters = [
+  { id: 'all', label: 'Tudo' },
+  { id: 'crime', label: 'Crimes' },
+  { id: 'territory', label: 'Mapa' },
+  { id: 'people', label: 'Pessoas' },
+  { id: 'system', label: 'Sistema' }
+];
+
+const inferTimelineCategory = (entry) => {
+  const text = entry.toLowerCase();
+  if (text.includes('crime') || text.includes('furto') || text.includes('roubo') || text.includes('assalto')) {
+    return 'crime';
+  }
+  if (text.includes('territorio') || text.includes('bairro') || text.includes('area') || text.includes('base')) {
+    return 'territory';
+  }
+  if (text.includes('entrou') || text.includes('promovido') || text.includes('contato')) {
+    return 'people';
+  }
+  return 'system';
+};
+
+const timelineCategoryLabels = {
+  crime: 'Crime',
+  territory: 'Mapa',
+  people: 'Pessoas',
+  system: 'Sistema'
+};
+
+const buildTimelineEntries = (activityLog) =>
+  activityLog.map((entry, index) => ({
+    id: `${index}-${entry}`,
+    text: entry,
+    category: inferTimelineCategory(entry),
+    order: activityLog.length - index,
+    recent: index === 0
+  }));
+
+const TimelinePanel = ({ entries, filter, onFilterChange, onOpenEntry }) => {
+  const filteredEntries =
+    filter === 'all' ? entries : entries.filter((entry) => entry.category === filter);
+  const counts = entries.reduce(
+    (acc, entry) => ({
+      ...acc,
+      [entry.category]: (acc[entry.category] ?? 0) + 1
+    }),
+    { all: entries.length }
+  );
+
+  return (
+    <section className="mt-10 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ScrollText className="h-4 w-4 text-neon-blue" />
+            <h2 className="text-lg font-semibold">Linha do tempo</h2>
+          </div>
+          <p className="mt-1 text-xs text-white/50">Eventos recentes com filtro e detalhe.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {timelineFilters.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onFilterChange(item.id)}
+              className={`rounded-lg border px-3 py-1 text-xs transition ${
+                filter === item.id
+                  ? 'border-neon-blue/50 bg-neon-blue/10 text-neon-blue'
+                  : 'border-white/10 bg-white/5 text-white/55 hover:border-white/30'
+              }`}
+            >
+              {item.label} {counts[item.id] ? `(${counts[item.id]})` : ''}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
+        {filteredEntries.length === 0 && (
+          <p className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/45">
+            Nenhum evento nesse filtro.
+          </p>
+        )}
+        {filteredEntries.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            onClick={() => onOpenEntry(entry)}
+            className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-left transition hover:border-neon-blue/40 hover:bg-neon-blue/10"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/55">
+                {timelineCategoryLabels[entry.category]}
+              </span>
+              <span className="text-[11px] text-white/35">#{entry.order}</span>
+            </div>
+            <p className="mt-2 line-clamp-2 text-sm text-white/75">{entry.text}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const TimelineDetailModal = ({ entry, onClose }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 text-white backdrop-blur-sm">
+    <button type="button" aria-label="Fechar evento" className="absolute inset-0 cursor-default" onClick={onClose} />
+    <section className="relative z-10 w-full max-w-xl rounded-2xl border border-white/10 bg-noir-900 p-5 shadow-2xl">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="flex items-center gap-2 text-xs uppercase tracking-[0.35em] text-neon-blue">
+            <Filter className="h-4 w-4" />
+            {timelineCategoryLabels[entry.category]}
+          </p>
+          <h2 className="mt-3 text-xl font-semibold">Evento #{entry.order}</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/10 bg-white/5 p-2 text-white/70 transition hover:border-white/30 hover:text-white"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <p className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm leading-relaxed text-white/75">
+        {entry.text}
+      </p>
+    </section>
+  </div>
+);
+
+const getNpcOpeningMessages = (npc) => [
+  {
+    from: 'npc',
+    text:
+      npc.relationship === 'enemy'
+        ? 'Eu sei quem voce e. Fala rapido.'
+        : npc.relationship === 'rival'
+          ? 'Voce apareceu no meu caminho. O que quer?'
+          : `Fala. Se for sobre ${npc.tags?.[0] ?? 'o bairro'}, talvez eu saiba algo.`
+  },
+  {
+    from: 'player',
+    text: 'Quero entender o movimento daqui.'
+  },
+  {
+    from: 'npc',
+    text: npc.note
+  }
+];
+
+const getNpcReply = (npc, action) => {
+  if (action === 'info') {
+    return npc.tags?.includes('informante')
+      ? 'Tem oportunidade, mas olha o horario e quem esta parado na esquina.'
+      : 'Informacao boa custa confianca. Hoje eu so te dou o basico.';
+  }
+  if (action === 'work') {
+    return npc.relationship === 'enemy' || npc.relationship === 'rival'
+      ? 'Trabalho contigo? Ainda nao. Prova que voce nao e problema primeiro.'
+      : 'Posso abrir uma porta pequena. Nada grande, nada barulhento.';
+  }
+  return npc.relationship === 'friend' || npc.relationship === 'ally'
+    ? 'Por enquanto esta tudo certo. Mas nao traz confusao para minha porta.'
+    : 'Confianca aqui vem devagar.';
+};
+
+const NpcConversationPanel = ({ npcs, selectedNpcId, onSelectNpc, messages, onSendPrompt }) => {
+  const selectedNpc = npcs.find((npc) => npc.id === selectedNpcId) ?? npcs[0];
+  const activeMessages = selectedNpc ? messages[selectedNpc.id] ?? getNpcOpeningMessages(selectedNpc) : [];
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-[0.42fr_0.58fr]">
+      <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+        {npcs.map((npc) => (
+          <button
+            key={npc.id}
+            type="button"
+            onClick={() => onSelectNpc(npc.id)}
+            className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+              selectedNpc?.id === npc.id
+                ? 'border-neon-blue/50 bg-neon-blue/10'
+                : 'border-white/10 bg-black/25 hover:border-white/30'
+            }`}
+          >
+            <p className="font-semibold text-white">{npc.name}</p>
+            <p className="text-xs text-white/50">{relationshipLabels[npc.relationship]}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+        {selectedNpc ? (
+          <>
+            <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+              <div>
+                <p className="font-semibold text-white">{selectedNpc.name}</p>
+                <p className="text-xs text-white/50">{selectedNpc.role}</p>
+              </div>
+              <MessageCircle className="h-4 w-4 text-neon-blue" />
+            </div>
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+              {activeMessages.map((message, index) => (
+                <div
+                  key={`${message.from}-${index}-${message.text}`}
+                  className={`flex ${message.from === 'player' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <p
+                    className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                      message.from === 'player'
+                        ? 'bg-neon-blue/15 text-neon-blue'
+                        : 'bg-white/10 text-white/75'
+                    }`}
+                  >
+                    {message.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => onSendPrompt(selectedNpc, 'info')}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-white/65 hover:border-neon-blue/40"
+              >
+                Pedir info
+              </button>
+              <button
+                type="button"
+                onClick={() => onSendPrompt(selectedNpc, 'work')}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-white/65 hover:border-neon-blue/40"
+              >
+                Propor corre
+              </button>
+              <button
+                type="button"
+                onClick={() => onSendPrompt(selectedNpc, 'trust')}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-white/65 hover:border-neon-blue/40"
+              >
+                Medir confianca
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-white/50">Nenhum NPC local disponivel.</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DomainPanel = ({ state, selectedNeighborhood, upgradeStatus, onUpgrade }) => {
+  const view = getDomainStageView(state.domain);
+  const Icon = state.domain.stage === 'area' ? MapPinned : state.domain.stage === 'base' ? Building2 : Home;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-white/45">Dominio</p>
+          <h3 className="mt-2 text-lg font-semibold">{view.title}</h3>
+          <p className="mt-1 text-xs text-white/55">{view.description}</p>
+        </div>
+        <span className="rounded-xl border border-neon-pink/40 bg-neon-pink/10 p-2 text-neon-pink">
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+          <p className="text-white/40">Seguranca</p>
+          <p className="mt-1 font-semibold text-white">{state.domain.security}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+          <p className="text-white/40">Logistica</p>
+          <p className="mt-1 font-semibold text-white">{state.domain.logistics}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+          <p className="text-white/40">Influencia</p>
+          <p className="mt-1 font-semibold text-white">{state.domain.influence}</p>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs text-white/55">
+        Local: {selectedNeighborhood?.name ?? state.domain.neighborhoodId}
+      </p>
+
+      {upgradeStatus.upgrade ? (
+        <div className="mt-4">
+          <button
+            type="button"
+            disabled={!upgradeStatus.available}
+            onClick={onUpgrade}
+            className="w-full rounded-xl border border-neon-blue/40 bg-neon-blue/10 px-4 py-2 text-xs font-semibold text-neon-blue transition hover:bg-neon-blue/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {upgradeStatus.upgrade.label}
+          </button>
+          {!upgradeStatus.available && (
+            <p className="mt-2 text-xs text-white/45">Falta: {upgradeStatus.missing.join(', ')}</p>
+          )}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-xl border border-neon-green/30 bg-neon-green/10 px-3 py-2 text-xs text-neon-green">
+          Area consolidada. Proximas melhorias podem virar predios, rotas e celulas.
+        </p>
+      )}
+    </div>
+  );
+};
+
 const AuthScreen = ({ authForm, setAuthForm, handleRegister, handleLogin, apiStatus }) => (
   <div className="relative min-h-screen overflow-hidden bg-black text-white">
     <div className="absolute inset-0 bg-gradient-to-br from-black via-noir-950 to-black" />
@@ -377,7 +756,7 @@ const SaveScreen = ({
   };
 
   return (
-    <div className="min-h-screen bg-noir-950 text-white">
+    <div className="min-h-screen bg-noir-950 pb-24 text-white md:pb-0">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -516,6 +895,12 @@ const App = () => {
   const [activeSaveName, setActiveSaveName] = useState('Campanha principal');
   const [cloudSaves, setCloudSaves] = useState([]);
   const [apiStatus, setApiStatus] = useState({ loading: false, error: '' });
+  const [gameTab, setGameTab] = useState('visao');
+  const [timelineFilter, setTimelineFilter] = useState('all');
+  const [selectedTimelineEntry, setSelectedTimelineEntry] = useState(null);
+  const [npcPanelTab, setNpcPanelTab] = useState('rede');
+  const [selectedNpcId, setSelectedNpcId] = useState('');
+  const [npcMessages, setNpcMessages] = useState({});
   const stateRef = useRef(state);
 
   // Mantem referencia sempre atual para o autosave sem depender de closure antiga.
@@ -542,6 +927,8 @@ const App = () => {
   );
 
   const crimeGroups = useMemo(() => groupCrimesByTier(state.crimes), [state.crimes]);
+  const timelineEntries = useMemo(() => buildTimelineEntries(state.activityLog), [state.activityLog]);
+  const domainUpgradeStatus = useMemo(() => getDomainUpgradeStatus(state), [state]);
 
   const itemNameMap = useMemo(() => {
     const map = {};
@@ -558,6 +945,17 @@ const App = () => {
     });
     return map;
   }, [cloudSaves]);
+
+  useEffect(() => {
+    if (!localNpcs.length) {
+      setSelectedNpcId('');
+      return;
+    }
+
+    if (!localNpcs.some((npc) => npc.id === selectedNpcId)) {
+      setSelectedNpcId(localNpcs[0].id);
+    }
+  }, [localNpcs, selectedNpcId]);
 
   useEffect(() => {
     // Persiste token para restaurar sessao apos refresh.
@@ -581,6 +979,26 @@ const App = () => {
         [field]: value
       }
     }));
+  };
+
+  const handleNpcPrompt = (npc, action) => {
+    const promptLabels = {
+      info: 'Me passa uma leitura do bairro.',
+      work: 'Tem algum corre pequeno para abrir caminho?',
+      trust: 'Como esta a confianca entre nos?'
+    };
+
+    setNpcMessages((prev) => {
+      const current = prev[npc.id] ?? getNpcOpeningMessages(npc);
+      return {
+        ...prev,
+        [npc.id]: [
+          ...current,
+          { from: 'player', text: promptLabels[action] },
+          { from: 'npc', text: getNpcReply(npc, action) }
+        ]
+      };
+    });
   };
 
   const saveCurrentProgress = async ({ silent = false } = {}) => {
@@ -851,6 +1269,21 @@ const App = () => {
           </div>
         </header>
 
+        <GameNavigation activeTab={gameTab} onChange={setGameTab} />
+
+        {state.lastTurnSummary && (
+          <section className="mt-6 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-3 text-sm text-white/70">
+            Historico de Turno: +${state.lastTurnSummary.cash} cash, +{state.lastTurnSummary.influence} influencia, +{state.lastTurnSummary.respect} respeito.
+          </section>
+        )}
+
+        {state.combatReport && (
+          <section className="mt-6 rounded-2xl border border-neon-amber/40 bg-neon-amber/10 px-4 py-3 text-sm text-neon-amber">
+            Combat Report: {state.combatReport}
+          </section>
+        )}
+
+        {gameTab === 'visao' && (
         <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_1fr]">
           <article className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
             <div className="flex items-start justify-between gap-4">
@@ -1009,20 +1442,11 @@ const App = () => {
             </p>
           </article>
         </section>
-
-        {state.lastTurnSummary && (
-          <section className="mt-6 rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-3 text-sm text-white/70">
-            Historico de Turno: +${state.lastTurnSummary.cash} cash, +{state.lastTurnSummary.influence} influencia, +{state.lastTurnSummary.respect} respeito.
-          </section>
         )}
 
-        {state.combatReport && (
-          <section className="mt-6 rounded-2xl border border-neon-amber/40 bg-neon-amber/10 px-4 py-3 text-sm text-neon-amber">
-            Combat Report: {state.combatReport}
-          </section>
-        )}
-
-        <section className="mt-10 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        {(gameTab === 'mapa' || gameTab === 'acoes') && (
+        <section className="mt-8">
+          {gameTab === 'mapa' && (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold">Mapa geopolitico</h2>
@@ -1106,6 +1530,13 @@ const App = () => {
               </div>
             )}
 
+            <DomainPanel
+              state={state}
+              selectedNeighborhood={selectedContext.neighborhood}
+              upgradeStatus={domainUpgradeStatus}
+              onUpgrade={() => dispatch({ type: 'UPGRADE_DOMAIN' })}
+            />
+
             <div className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1116,36 +1547,87 @@ const App = () => {
                 </div>
                 <Users className="h-4 w-4 text-neon-blue" />
               </div>
-              <div className="mt-3 grid gap-2">
-                {localNpcs.map((npc) => (
-                  <div key={npc.id} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-white">{npc.name}</p>
-                        <p className="text-xs text-white/55">{npc.role}</p>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNpcPanelTab('rede')}
+                  className={`rounded-lg border px-3 py-1 text-xs ${
+                    npcPanelTab === 'rede'
+                      ? 'border-neon-blue/50 bg-neon-blue/10 text-neon-blue'
+                      : 'border-white/10 bg-white/5 text-white/55'
+                  }`}
+                >
+                  Rede
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNpcPanelTab('conversas')}
+                  className={`rounded-lg border px-3 py-1 text-xs ${
+                    npcPanelTab === 'conversas'
+                      ? 'border-neon-blue/50 bg-neon-blue/10 text-neon-blue'
+                      : 'border-white/10 bg-white/5 text-white/55'
+                  }`}
+                >
+                  Conversas
+                </button>
+              </div>
+
+              <div className="mt-3">
+                {npcPanelTab === 'rede' ? (
+                  <div className="grid gap-2">
+                    {localNpcs.map((npc) => (
+                      <div key={npc.id} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-white">{npc.name}</p>
+                            <p className="text-xs text-white/55">{npc.role}</p>
+                          </div>
+                          <span
+                            className={`rounded-lg border px-2 py-1 text-xs ${
+                              relationClasses[npc.relationship] ?? relationClasses.neutral
+                            }`}
+                          >
+                            {relationshipLabels[npc.relationship] ?? npc.relationship}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs leading-relaxed text-white/55">{npc.note}</p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {(npc.tags ?? []).map((tag) => (
+                            <span key={tag} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/50">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedNpcId(npc.id);
+                            setNpcPanelTab('conversas');
+                          }}
+                          className="mt-3 rounded-lg border border-neon-blue/30 bg-neon-blue/10 px-3 py-1 text-xs text-neon-blue"
+                        >
+                          Conversar
+                        </button>
                       </div>
-                      <span
-                        className={`rounded-lg border px-2 py-1 text-xs ${
-                          relationClasses[npc.relationship] ?? relationClasses.neutral
-                        }`}
-                      >
-                        {relationshipLabels[npc.relationship] ?? npc.relationship}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs leading-relaxed text-white/55">{npc.note}</p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {(npc.tags ?? []).map((tag) => (
-                        <span key={tag} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/50">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <NpcConversationPanel
+                    npcs={localNpcs}
+                    selectedNpcId={selectedNpcId}
+                    onSelectNpc={setSelectedNpcId}
+                    messages={npcMessages}
+                    onSendPrompt={handleNpcPrompt}
+                  />
+                )}
               </div>
             </div>
           </div>
 
+          )}
+
+          {gameTab === 'acoes' && (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold">Acoes estrategicas</h2>
@@ -1262,8 +1744,11 @@ const App = () => {
               </div>
             </div>
           </div>
+          )}
         </section>
+        )}
 
+        {gameTab === 'equipe' && (
         <section className="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-semibold">
@@ -1318,17 +1803,23 @@ const App = () => {
             ))}
           </div>
         </section>
+        )}
 
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">Linha do tempo</h2>
-          <div className="mt-4 space-y-3">
-            {state.activityLog.map((entry, index) => (
-              <div key={`${entry}-${index}`} className="rounded-2xl border border-white/10 bg-noir-900/70 px-4 py-4 text-sm">
-                {entry}
-              </div>
-            ))}
-          </div>
-        </section>
+        {gameTab === 'historico' && (
+        <TimelinePanel
+          entries={timelineEntries}
+          filter={timelineFilter}
+          onFilterChange={setTimelineFilter}
+          onOpenEntry={setSelectedTimelineEntry}
+        />
+        )}
+
+        {selectedTimelineEntry && (
+          <TimelineDetailModal
+            entry={selectedTimelineEntry}
+            onClose={() => setSelectedTimelineEntry(null)}
+          />
+        )}
 
         {state.activeEvent && (
           <ActionEventModal

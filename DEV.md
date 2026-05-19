@@ -19,6 +19,7 @@ Acoes principais:
 - `ACTION_COMMIT_CRIME`
 - `RESOLVE_ACTIVE_EVENT_OPTION`
 - `CLOSE_ACTIVE_EVENT`
+- `UPGRADE_DOMAIN`
 - `ACTION_BUY_ITEM`
 - `ACTION_RECRUIT`
 - `ACTION_PROMOTE`
@@ -30,6 +31,10 @@ Melhoria recente de design de gameplay:
 - o sistema de recrutamento agora inicia com candidatos e renova contatos ao longo dos dias para evitar dead-end da mecanica.
 - o sistema de acoes criminais usa rolagens tipo RPG com `d20`, pesos de status, faixas min/medio/max e encontros dinamicos em `activeEvent`.
 - o motor criminal organiza crimes por tier, requisitos de itens/NPCs/patentes e rede local de personagens por bairro.
+- a tela principal foi reorganizada em abas de app: visao, mapa, acoes, equipe e historico, com navegacao inferior no mobile.
+- a linha do tempo virou um painel filtravel com contadores por categoria e modal de detalhe para reduzir ruido visual.
+- NPCs locais agora possuem aba de conversas semi-estaticas, separada da lista de rede local.
+- o mapa ganhou progressao de dominio: `casa` para turma pequena, `base` para quadrilha em crescimento e `area` para presenca consolidada.
 
 ### 2.2 Integracao com API
 Cliente HTTP em `frontend/src/services/api.js`.
@@ -112,6 +117,8 @@ Saves:
 Game support:
 - `GET /api/game/config`
 - `GET /api/game/leaderboard`
+
+`/api/game/config` informa `stateVersion` atual. A versao de estado ativa e `5`.
 
 Infra:
 - `GET /`

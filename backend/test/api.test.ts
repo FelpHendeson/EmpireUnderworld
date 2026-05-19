@@ -4,6 +4,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 let app: any;
 let connectMongo: (typeof import('../src/lib/mongo.js'))['connectMongo'];
 let disconnectMongo: (typeof import('../src/lib/mongo.js'))['disconnectMongo'];
+let UserModel: (typeof import('../src/models/User.js'))['UserModel'];
+let SaveGameModel: (typeof import('../src/models/SaveGame.js'))['SaveGameModel'];
+const createdUserIds: string[] = [];
+
+const decodeJwtPayload = (token: string) =>
+  JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as {
+    sub?: string;
+    email?: string;
+    iat?: number;
+    exp?: number;
+  };
 
 const registerAndGetSession = async () => {
   const unique = Math.random().toString(36).slice(2, 8);
@@ -19,6 +30,7 @@ const registerAndGetSession = async () => {
 
   expect(registerResponse.statusCode).toBe(201);
   const body = registerResponse.json();
+  createdUserIds.push(body.user.id);
   return {
     token: body.token as string,
     user: body.user as { id: string; username: string; email: string }
@@ -31,11 +43,16 @@ const registerAndGetToken = async () => {
 };
 
 beforeAll(async () => {
+  if (process.env.MONGODB_TEST_URI) {
+    process.env.MONGODB_URI = process.env.MONGODB_TEST_URI;
+  }
+
   if (!process.env.MONGODB_URI) {
     throw new Error('MONGODB_URI is required to run API tests. Configure backend/.env first.');
   }
 
   process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+  process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
   process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 
   const mongoModule = await import('../src/lib/mongo.js');
@@ -43,6 +60,11 @@ beforeAll(async () => {
   disconnectMongo = mongoModule.disconnectMongo;
 
   await connectMongo();
+
+  const userModelModule = await import('../src/models/User.js');
+  const saveModelModule = await import('../src/models/SaveGame.js');
+  UserModel = userModelModule.UserModel;
+  SaveGameModel = saveModelModule.SaveGameModel;
 
   const appModule = await import('../src/app.js');
   app = await appModule.default();
@@ -52,6 +74,10 @@ beforeAll(async () => {
 afterAll(async () => {
   if (app) {
     await app.close();
+  }
+  if (createdUserIds.length) {
+    await SaveGameModel.deleteMany({ userId: { $in: createdUserIds } });
+    await UserModel.deleteMany({ _id: { $in: createdUserIds } });
   }
   if (disconnectMongo) {
     await disconnectMongo();
@@ -73,7 +99,11 @@ describe('Auth routes', () => {
 
     expect(register.statusCode).toBe(201);
     const registerBody = register.json();
+    createdUserIds.push(registerBody.user.id);
     expect(registerBody.token).toBeTypeOf('string');
+    const registerTokenPayload = decodeJwtPayload(registerBody.token);
+    expect(registerTokenPayload.sub).toBe(registerBody.user.id);
+    expect(registerTokenPayload.exp).toBeGreaterThan(registerTokenPayload.iat ?? 0);
 
     const login = await app.inject({
       method: 'POST',
@@ -86,6 +116,9 @@ describe('Auth routes', () => {
 
     expect(login.statusCode).toBe(200);
     const loginToken = login.json().token as string;
+    const loginTokenPayload = decodeJwtPayload(loginToken);
+    expect(loginTokenPayload.sub).toBe(registerBody.user.id);
+    expect(loginTokenPayload.exp).toBeGreaterThan(loginTokenPayload.iat ?? 0);
 
     const me = await app.inject({
       method: 'GET',

@@ -28,6 +28,7 @@ Arquivo `.env` (base em `.env.example`):
 - `HOST` (default `0.0.0.0`)
 - `CORS_ORIGIN` (default `http://localhost:5173`)
 - `JWT_SECRET` (obrigatoria)
+- `JWT_EXPIRES_IN` (default `1h`)
 - `MONGODB_URI` (obrigatoria)
 
 Sem `JWT_SECRET` ou `MONGODB_URI`, a aplicacao falha no boot.
@@ -56,6 +57,9 @@ Retorno:
 - `token`: JWT
 - `user`: `{ id, email, username }`
 
+Token:
+- emitido com expiracao configurada por `JWT_EXPIRES_IN`.
+
 Senha:
 - hash com `bcrypt` (`salt rounds = 10`)
 
@@ -83,6 +87,7 @@ Normalizacao no backend:
 
 ## Comandos
 - `npm run dev`: desenvolvimento (`tsx watch`).
+- `npm run typecheck`: TypeScript sem emitir build (`tsc --noEmit`).
 - `npm run build`: build com `tsup` para `dist`.
 - `npm run start`: roda build.
 - `npm run test`: testes (`vitest run`).

@@ -10,7 +10,12 @@ declare module 'fastify' {
 }
 
 export const authPlugin = fp(async (app) => {
-  await app.register(jwt, { secret: env.JWT_SECRET });
+  await app.register(jwt, {
+    secret: env.JWT_SECRET,
+    sign: {
+      expiresIn: env.JWT_EXPIRES_IN
+    }
+  });
 
   // Centraliza a validacao JWT para reuso no preHandler das rotas protegidas.
   app.decorate('authenticate', async (request, reply) => {

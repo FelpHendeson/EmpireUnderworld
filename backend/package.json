@@ -8,14 +8,15 @@
     "build": "tsup",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
-    "@fastify/jwt": "^9.1.0",
-    "bcryptjs": "^2.4.3",
+    "@fastify/jwt": "^10.1.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.5",
-    "fastify": "^5.7.4",
+    "fastify": "^5.8.5",
     "fastify-plugin": "^5.0.1",
     "mongoose": "^8.18.1"
   },
@@ -24,6 +25,6 @@
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.6"
   }
 }

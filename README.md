@@ -6,6 +6,7 @@ Monorepo de jogo web (frontend + backend) para simulacao e gestao de organizacao
 - `frontend/`: cliente React + Vite + Tailwind, com loop de jogo e UI.
 - `backend/`: API Fastify + MongoDB para auth, usuarios e cloud saves.
 - `DEV.md`: documentacao tecnica detalhada da arquitetura e fluxo.
+- `GUARDRAILS.md`: padroes de codigo, seguranca, testes e criterios de qualidade.
 
 ## Requisitos
 - Node.js 20+
@@ -23,6 +24,7 @@ cp backend/.env.example backend/.env
 3. Ajuste `backend/.env`:
 - `MONGODB_URI`: mesma URL do seu cluster, trocando apenas o nome do database para `empire_underworld`.
 - `JWT_SECRET`: chave de assinatura de tokens.
+- `JWT_EXPIRES_IN`: duracao do access token (default recomendado: `1h`).
 - `CORS_ORIGIN`: URL do frontend.
 4. (Opcional) configure frontend:
 ```bash
@@ -44,6 +46,11 @@ npm run dev:backend
 Build:
 ```bash
 npm run build
+```
+
+Verificacao completa:
+```bash
+npm run verify
 ```
 
 Testes da API:

@@ -13,10 +13,14 @@ const parseResponse = async (response) => {
 };
 
 const request = async (path, options = {}) => {
+  const hasBody = options.body !== undefined && options.body !== null;
   const mergedHeaders = {
-    'Content-Type': 'application/json',
     ...(options.headers || {})
   };
+
+  if (hasBody && !mergedHeaders['Content-Type'] && !mergedHeaders['content-type']) {
+    mergedHeaders['Content-Type'] = 'application/json';
+  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

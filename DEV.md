@@ -130,6 +130,9 @@ Obrigatorias:
 - `JWT_SECRET`
 - `MONGODB_URI`
 
+Opcionais:
+- `JWT_EXPIRES_IN` (default `1h`)
+
 O backend falha no startup se variaveis obrigatorias nao existirem.
 
 ## 5. Workspace scripts (raiz)
@@ -139,6 +142,8 @@ Scripts no `package.json` da raiz:
 - `npm run dev:frontend`
 - `npm run dev:backend`
 - `npm run build`
+- `npm run typecheck`
+- `npm run verify`
 - `npm run test -w backend`
 
 ## 6. Decisoes de design

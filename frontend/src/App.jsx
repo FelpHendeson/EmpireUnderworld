@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   BadgeDollarSign,
+  BookOpen,
   CalendarDays,
+  Check,
   Info,
   Map,
   ShieldAlert,
@@ -9,7 +11,8 @@ import {
   Swords,
   Target,
   UserPlus,
-  Users
+  Users,
+  X
 } from 'lucide-react';
 import { backstoryOptions, createInitialState, getNextRank, rankData } from './data/gameData';
 import { authApi, saveApi } from './services/api';
@@ -41,6 +44,96 @@ const ResourceCard = ({ label, value, icon: Icon }) => (
       <Icon className="h-4 w-4 text-neon-blue" />
     </div>
     <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+  </div>
+);
+
+const statBonusLabels = {
+  health: 'Saude',
+  attack: 'Ataque',
+  defense: 'Defesa',
+  combatProficiency: 'Proeza',
+  speed: 'Velocidade'
+};
+
+const BackstoryModal = ({ backstories, selectedBackstoryId, onSelect, onClose }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 text-white backdrop-blur-sm">
+    <button
+      type="button"
+      aria-label="Fechar escolha de origem"
+      className="absolute inset-0 cursor-default"
+      onClick={onClose}
+    />
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="backstory-modal-title"
+      className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/10 bg-noir-900 p-5 shadow-2xl"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="flex items-center gap-2 text-xs uppercase tracking-[0.35em] text-neon-blue">
+            <BookOpen className="h-4 w-4" />
+            Origem do personagem
+          </p>
+          <h2 id="backstory-modal-title" className="mt-3 text-2xl font-semibold">
+            Escolha sua historia
+          </h2>
+          <p className="mt-2 text-sm text-white/60">
+            A origem define a descricao inicial do personagem e altera seus atributos de partida.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/10 bg-white/5 p-2 text-white/70 transition hover:border-white/30 hover:text-white"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-3">
+        {backstories.map((backstory) => {
+          const selected = backstory.id === selectedBackstoryId;
+          const statEntries = Object.entries(backstory.statBonus ?? {}).filter(([, value]) => value);
+
+          return (
+            <button
+              key={backstory.id}
+              type="button"
+              onClick={() => onSelect(backstory.id)}
+              className={`rounded-2xl border px-4 py-4 text-left transition ${
+                selected
+                  ? 'border-neon-pink/60 bg-neon-pink/10'
+                  : 'border-white/10 bg-black/25 hover:border-neon-blue/50 hover:bg-neon-blue/10'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-white">{backstory.title}</h3>
+                  <p className="mt-1 text-sm text-white/60">{backstory.summary}</p>
+                </div>
+                {selected && (
+                  <span className="rounded-full border border-neon-pink/40 bg-neon-pink/10 p-1 text-neon-pink">
+                    <Check className="h-4 w-4" />
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {statEntries.map(([stat, value]) => (
+                  <span
+                    key={stat}
+                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/70"
+                  >
+                    {statBonusLabels[stat] ?? stat} +{value}
+                  </span>
+                ))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   </div>
 );
 
@@ -114,111 +207,146 @@ const SaveScreen = ({
   onLoadSave,
   onDeleteSave,
   onLogout
-}) => (
-  <div className="min-h-screen bg-noir-950 text-white">
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.45em] text-white/50">Empire Underworld</p>
-          <h1 className="mt-3 text-3xl font-semibold">Gerenciamento de Saves</h1>
-          <p className="mt-2 text-sm text-white/60">Escolha 1 entre 3 slots para iniciar ou continuar sua campanha.</p>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-white/70">{authUser?.username}</span>
-          <button
-            type="button"
-            onClick={onLogout}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs transition hover:border-white/30"
-          >
-            Sair
-          </button>
-        </div>
-      </div>
+}) => {
+  const [backstoryModalSlot, setBackstoryModalSlot] = useState(null);
+  const activeDraft = backstoryModalSlot ? slotDrafts[backstoryModalSlot] : null;
+  const selectedBackstoryId = activeDraft?.backstoryId ?? availableBackstories[0]?.id;
 
-      <div className="mt-8 grid gap-6 md:grid-cols-3">
-        {SLOT_IDS.map((slot) => {
-          const save = savesBySlot[slot];
-          const draft = slotDrafts[slot] ?? {
-            playerName: '',
-            saveName: 'Campanha principal',
-            backstoryId: availableBackstories[0]?.id
-          };
-          return (
-            <article key={slot} className="rounded-3xl border border-white/10 bg-noir-900/70 p-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-white/50">{slot}</p>
-              {save ? (
-                <>
-                  <h3 className="mt-3 text-lg font-semibold">{save.name}</h3>
-                  <p className="mt-2 text-xs text-white/60">Dia {save.day}</p>
-                  <p className="mt-1 text-xs text-white/60">
-                    Cash ${save.resources?.cash ?? 0} | Infl. {save.resources?.influence ?? 0} | Resp. {save.resources?.respect ?? 0}
-                  </p>
-                  <div className="mt-5 grid grid-cols-2 gap-2">
+  const handleSelectBackstory = (backstoryId) => {
+    if (backstoryModalSlot) {
+      onSlotDraftChange(backstoryModalSlot, 'backstoryId', backstoryId);
+    }
+    setBackstoryModalSlot(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-noir-950 text-white">
+      <div className="mx-auto max-w-6xl px-6 py-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.45em] text-white/50">Empire Underworld</p>
+            <h1 className="mt-3 text-3xl font-semibold">Gerenciamento de Saves</h1>
+            <p className="mt-2 text-sm text-white/60">Escolha 1 entre 3 slots para iniciar ou continuar sua campanha.</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-white/70">{authUser?.username}</span>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs transition hover:border-white/30"
+            >
+              Sair
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-8 grid gap-6 md:grid-cols-3">
+          {SLOT_IDS.map((slot) => {
+            const save = savesBySlot[slot];
+            const draft = slotDrafts[slot] ?? {
+              playerName: '',
+              saveName: 'Campanha principal',
+              backstoryId: availableBackstories[0]?.id
+            };
+            const currentBackstory =
+              availableBackstories.find((backstory) => backstory.id === draft.backstoryId) ??
+              availableBackstories[0];
+
+            return (
+              <article key={slot} className="rounded-3xl border border-white/10 bg-noir-900/70 p-5">
+                <p className="text-xs uppercase tracking-[0.25em] text-white/50">{slot}</p>
+                {save ? (
+                  <>
+                    <h3 className="mt-3 text-lg font-semibold">{save.name}</h3>
+                    <p className="mt-2 text-xs text-white/60">Dia {save.day}</p>
+                    <p className="mt-1 text-xs text-white/60">
+                      Cash ${save.resources?.cash ?? 0} | Infl. {save.resources?.influence ?? 0} | Resp. {save.resources?.respect ?? 0}
+                    </p>
+                    <div className="mt-5 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onLoadSave(slot)}
+                        disabled={apiStatus.loading}
+                        className="rounded-lg border border-neon-blue/40 bg-neon-blue/10 px-3 py-2 text-xs font-semibold text-neon-blue disabled:opacity-50"
+                      >
+                        Entrar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteSave(slot)}
+                        disabled={apiStatus.loading}
+                        className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-50"
+                      >
+                        Apagar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="mt-3 text-lg font-semibold">Slot vazio</h3>
+                    <div className="mt-4 space-y-2">
+                      <input
+                        value={draft.playerName}
+                        onChange={(event) => onSlotDraftChange(slot, 'playerName', event.target.value)}
+                        placeholder="Nome do personagem"
+                        className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+                      />
+                      <input
+                        value={draft.saveName}
+                        onChange={(event) => onSlotDraftChange(slot, 'saveName', event.target.value)}
+                        placeholder="Nome da campanha"
+                        className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setBackstoryModalSlot(slot)}
+                        className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-left text-sm outline-none transition hover:border-neon-blue/50 hover:bg-neon-blue/10"
+                      >
+                        <span className="flex items-center justify-between gap-3">
+                          <span>
+                            <span className="block text-xs uppercase tracking-[0.2em] text-white/45">Origem</span>
+                            <span className="mt-1 block font-semibold text-white">
+                              {currentBackstory?.title ?? 'Selecionar origem'}
+                            </span>
+                          </span>
+                          <BookOpen className="h-4 w-4 shrink-0 text-neon-blue" />
+                        </span>
+                        {currentBackstory?.summary && (
+                          <span className="mt-2 block text-xs leading-relaxed text-white/55">
+                            {currentBackstory.summary}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => onLoadSave(slot)}
+                      onClick={() => onCreateSave(slot)}
                       disabled={apiStatus.loading}
-                      className="rounded-lg border border-neon-blue/40 bg-neon-blue/10 px-3 py-2 text-xs font-semibold text-neon-blue disabled:opacity-50"
+                      className="mt-4 w-full rounded-lg border border-neon-pink/40 bg-neon-pink/10 px-3 py-2 text-xs font-semibold text-neon-pink disabled:opacity-50"
                     >
-                      Entrar
+                      Criar e Entrar
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onDeleteSave(slot)}
-                      disabled={apiStatus.loading}
-                      className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-50"
-                    >
-                      Apagar
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h3 className="mt-3 text-lg font-semibold">Slot vazio</h3>
-                  <div className="mt-4 space-y-2">
-                    <input
-                      value={draft.playerName}
-                      onChange={(event) => onSlotDraftChange(slot, 'playerName', event.target.value)}
-                      placeholder="Nome do personagem"
-                      className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-                    />
-                    <input
-                      value={draft.saveName}
-                      onChange={(event) => onSlotDraftChange(slot, 'saveName', event.target.value)}
-                      placeholder="Nome da campanha"
-                      className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-                    />
-                    <select
-                      value={draft.backstoryId}
-                      onChange={(event) => onSlotDraftChange(slot, 'backstoryId', event.target.value)}
-                      className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm outline-none focus:border-neon-blue/50"
-                    >
-                      {availableBackstories.map((backstory) => (
-                        <option key={backstory.id} value={backstory.id}>
-                          {backstory.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onCreateSave(slot)}
-                    disabled={apiStatus.loading}
-                    className="mt-4 w-full rounded-lg border border-neon-pink/40 bg-neon-pink/10 px-3 py-2 text-xs font-semibold text-neon-pink disabled:opacity-50"
-                  >
-                    Criar e Entrar
-                  </button>
-                </>
-              )}
-            </article>
-          );
-        })}
+                  </>
+                )}
+              </article>
+            );
+          })}
+        </div>
+
+        {apiStatus.error && <p className="mt-5 text-sm text-red-300">{apiStatus.error}</p>}
       </div>
 
-      {apiStatus.error && <p className="mt-5 text-sm text-red-300">{apiStatus.error}</p>}
+      {backstoryModalSlot && (
+        <BackstoryModal
+          backstories={availableBackstories}
+          selectedBackstoryId={selectedBackstoryId}
+          onSelect={handleSelectBackstory}
+          onClose={() => setBackstoryModalSlot(null)}
+        />
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 const App = () => {
   const [state, dispatch] = useReducer(gameReducer, null, () => createInitialState('Jogador'));
